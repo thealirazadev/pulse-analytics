@@ -11,9 +11,11 @@ Running log of what is done, what is in flight, and decisions worth remembering.
 
 - 2026-07-18 — Phase 3 done. Single-admin auth with node:crypto only. scrypt password hash/verify (`salt:hash` hex, 16B salt/64B key) + `npm run hash-password` helper. HMAC-signed stateless session cookie `pulse_session` (base64url payload `{sub,exp}` + hex sig, 7-day expiry, HttpOnly/SameSite=Lax/Secure-in-prod); tamper and expiry verify to null. Login route: 5/min in-memory limiter (429), constant-time email+password check that never reveals which field failed (401), 204+cookie on success. Logout clears the cookie (401 if unauthenticated). `middleware.ts` guards /dashboard, /sites, /api/stats/*, /api/sites*, /api/auth/logout. Placeholder /dashboard proves the guard. 98 tests pass; tsc/lint/build clean.
 
+- 2026-07-18 — Phase 4 done. Site CRUD API (`/api/sites`, `/api/sites/[id]`): session-guarded, hand-rolled domain/name validation, pk_ public ids, 409 on duplicate domain (drizzle error unwrapped for the pg constraint), DELETE cascades events+rollups. UI: `/sites` list with register form + verified badges + delete ConfirmDialog; `/sites/[id]` shows copy-ready snippet + VerifyStatus polling every 5s. Ingestion marks a site verified on its first accepted event (idempotent). Tracking snippet `public/p.js` 1146 bytes (<1536): async, no deps, sendBeacon+fetch-keepalive fallback, sends on load + pushState/replaceState/popstate, strips query/fragment (uses location.pathname), no-ops under DNT/GPC, never throws, no cookies/storage. Shared UI: Button, Input, ConfirmDialog (custom focus-trapped modal), Header, LogoutButton. 125 tests pass (added component tests + jsdom snippet behavior tests); tsc/lint/build clean.
+
 ## In progress
 
-- Phase 4 next: site management CRUD + UI and the tracking snippet.
+- Phase 5 next: stats API over rollups + dashboard UI (pickers, tiles, chart, breakdowns).
 
 ## Decisions log
 
@@ -31,3 +33,4 @@ Running log of what is done, what is in flight, and decisions worth remembering.
 - 2026-07-18 — Rollup SQL binds all timestamps as ISO text with an explicit `::timestamptz` cast (never a raw JS Date) so the hand-written postgres.js queries survive cross-realm module loading in the test runner; drizzle inserts are unaffected. Vitest runs test files sequentially (`fileParallelism:false`) because integration tests share one Postgres database and truncate between cases.
 - 2026-07-18 — Rollup route validates the bearer token with `timingSafeEqual`. Collect `DNT`/bot drops return 202 (accepted, nothing stored) so probes cannot distinguish a tracked vs untracked site.
 - 2026-07-18 — Middleware runs on the Edge runtime, which lacks node:crypto, so it does a presence-only cookie gate (redirect pages to /login, 401 guarded APIs). Authoritative HMAC signature+expiry verification happens in every guarded route handler and server component (`readRequestSession`/`getServerSession`), so a forged cookie passes the gate but fails at the data layer. `lib/auth/constants.ts` holds the crypto-free cookie constants shared by Edge middleware and Node code.
+- 2026-07-18 — Next.js route files may only export HTTP-method handlers + a few config fields, so shared helpers (e.g. `serializeSite`) live in `lib/`, not in the route module. The snippet is async, so `document.currentScript` is null at run time; it finds its own tag via `document.querySelector("script[data-site]")` and derives the collect endpoint with `new URL("/api/collect", script.src)`.
