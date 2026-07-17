@@ -78,6 +78,17 @@ describe("POST /api/collect", () => {
     expect(row.visitorHash).toMatch(/^[0-9a-f]{32}$/);
   });
 
+  it("marks the site verified on the first accepted event", async () => {
+    const siteId = await seedSite();
+    let rows = await getDb().select().from(site).where(eq(site.id, siteId));
+    expect(rows[0]!.verifiedAt).toBeNull();
+
+    await POST(collectRequest({ sid: SID, p: "/" }));
+
+    rows = await getDb().select().from(site).where(eq(site.id, siteId));
+    expect(rows[0]!.verifiedAt).not.toBeNull();
+  });
+
   it("gives the same visitor hash for identical inputs on the same day", async () => {
     await seedSite();
     await POST(collectRequest({ sid: SID, p: "/" }));

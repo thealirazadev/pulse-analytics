@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { NextResponse, type NextRequest } from "next/server";
 import { getDb } from "@/lib/db/client";
 import { eventRaw, site } from "@/lib/db/schema";
@@ -56,7 +56,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     // 3. Resolve the site by public id.
     const db = getDb();
     const found = await db
-      .select({ id: site.id, domain: site.domain })
+      .select({
+        id: site.id,
+        domain: site.domain,
+        verifiedAt: site.verifiedAt,
+      })
       .from(site)
       .where(eq(site.publicId, beacon.sid))
       .limit(1);
@@ -136,6 +140,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       device,
       visitorHash,
     });
+
+    // First accepted event verifies the site (idempotent: only when still null).
+    if (matched.verifiedAt === null) {
+      await db
+        .update(site)
+        .set({ verifiedAt: new Date() })
+        .where(and(eq(site.id, matched.id), isNull(site.verifiedAt)));
+    }
 
     logger.info("ingest_accepted", {
       siteId: matched.id,
