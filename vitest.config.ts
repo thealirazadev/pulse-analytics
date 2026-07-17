@@ -15,5 +15,8 @@ export default defineConfig({
     setupFiles: ["./tests/setup.ts"],
     include: ["tests/**/*.test.{ts,tsx}"],
     exclude: ["tests/e2e/**", "node_modules/**"],
+    // Integration tests share one Postgres database and truncate between cases,
+    // so test files must not run concurrently or they would wipe each other.
+    fileParallelism: false,
   },
 });
