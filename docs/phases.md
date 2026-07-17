@@ -1,0 +1,201 @@
+# Phases: pulse-analytics
+
+Phase N+1 does not start until the owner approves phase N. Each phase is the smallest useful chunk that ships and is testable on its own. One commit per feature/task, in the listed order, Conventional Commits. Build and tests must pass before a feature is done (see `docs/testing.md`).
+
+The three senior differentiators — write/read path separation with a scheduled idempotent aggregation job, privacy engineering as testable spec, and ingestion resilience — are hard requirements of Phases 1 and 2. They are not stretch goals and cannot slip.
+
+---
+
+## Phase 1 — Scaffold, schema, and privacy primitives
+
+Goal: a running Next.js app connected to Postgres with the complete schema migrated (raw, rollups, salt, watermark — the write/read separation exists in the schema from day one), plus the tested privacy primitives (salt lifecycle, visitor hash) that everything else builds on.
+
+### Definition of done
+- Next.js (App Router) + TypeScript + Tailwind boots with `npm run dev`; ESLint + Prettier pass; Vitest runs.
+- Approved dependencies installed with exact pinned versions; `package-lock.json` committed.
+- `lib/env.ts` validates all required env vars at startup and fails fast with a clear message; `.env.example` present.
+- `lib/logger.ts` emits structured JSON lines and rejects `ip`/`userAgent` fields (unit tested).
+- `lib/errors.ts` produces the single error body from `docs/api-contracts.md`.
+- Drizzle schema in `lib/db/schema.ts` defines `site`, `daily_salt`, `event_raw`, `rollup_hourly`, `rollup_daily`, `rollup_page_daily`, `rollup_referrer_daily`, `rollup_country_daily`, `rollup_device_daily`, `rollup_watermark` exactly per `docs/architecture.md`; migration 0001 generated and applied cleanly to a fresh database via `npm run db:migrate`.
+- `lib/privacy/salt.ts`: race-safe get-or-create of today's UTC salt; `destroyExpiredSalts()` deletes all rows before today. Unit/integration tested, including two concurrent get-or-create calls yielding one row.
+- `lib/privacy/visitorHash.ts`: deterministic for identical inputs, different across salts, 32 hex chars. Unit tested.
+
+### Manual test checklist
+- `npm run dev` serves localhost:3000 without console errors (a placeholder page is fine).
+- Start with a missing `DATABASE_URL`: the app refuses to start with one clear message, no stack trace spew.
+- Run `npm run db:migrate` against a fresh database, then `\dt` in psql: all ten tables exist with the documented keys.
+- Run migrations twice: second run is a no-op, no errors.
+
+### Commits
+- `chore(scaffold): init next app router with typescript and tailwind`
+- `chore(tooling): add eslint prettier and vitest config`
+- `feat(env): add validated fail-fast env access`
+- `feat(logger): add structured logger with privacy field rejection`
+- `feat(errors): add single api error format helper`
+- `feat(db): add drizzle schema and initial migration for all tables`
+- `feat(privacy): add daily salt lifecycle with destruction`
+- `feat(privacy): add visitor hash derivation`
+
+---
+
+## Phase 2 — Data pipeline: ingestion and rollups
+
+Goal: the complete pipeline works end to end from a curl'd beacon to correct rollup rows. All three differentiators land here: resilient ingestion (validation, origin check, rate limiting, graceful bad-input handling), the privacy engine live on the write path (geo then IP discard, salted hash, DNT), and the idempotent catch-up-safe aggregation job bridging write and read paths.
+
+### Definition of done
+- `POST /api/collect` implements the full contract in `docs/api-contracts.md`: 1 KB body cap (`413`), hand-rolled payload validation (`400`), site lookup + `Origin`/`Referer` host check (`403`), `DNT`/`Sec-GPC` header drop (`202`, nothing stored), bot UA drop (`202`, nothing stored), per-site token bucket (`429`), then device classification, optional GeoIP country, visitor hash, single `event_raw` insert, `202` with no body and no `Set-Cookie`.
+- Path normalization strips query strings and fragments server-side regardless of what the client sent; referrer is reduced to an external hostname or null.
+- `lib/ingest/device.ts` classifies desktop/mobile/tablet/unknown and detects common bots with a small in-house regex set (no UA-parser dependency); unit tested against a fixture list.
+- `lib/ingest/geo.ts` reads the mmdb at `GEOIP_DB_PATH` once at startup; missing/corrupt file logs one warning and yields null countries — never a crash.
+- A log-capture test proves a full ingest writes no IP and no raw UA to logs or DB.
+- `POST /api/jobs/rollup` implements the job: bearer auth, advisory lock (second concurrent call gets `409`), recompute all hourly buckets from the watermark through the current partial hour, recompute daily tables (including exact `COUNT(DISTINCT visitor_hash)` per day) for touched days, upsert-overwrite only, advance watermark past hours older than the 5-minute grace, prune raw > 72 h on finalized days, destroy expired salts, cap 78 buckets per invocation, return the run-summary JSON.
+- Integration tests (real Postgres) prove: running the job twice yields byte-identical rollups; a simulated multi-hour gap backfills correctly; a replayed raw set never changes recompute results; pruning does not alter rollups; sentinel mapping (`''` direct, `'ZZ'` unknown) is applied.
+
+### Manual test checklist
+- Insert a site row by hand (SQL), then curl a valid beacon with a matching `Origin`: `202`, one `event_raw` row with hash, device, country (or null), stripped path.
+- Curl with a mismatched `Origin`: `403` and the standard error body; nothing stored.
+- Curl malformed JSON, a missing `sid`, and a 2 KB body: `400`, `400`, `413`; nothing stored.
+- Curl with `-H "DNT: 1"`: `202`, nothing stored.
+- Loop 100 rapid beacons: some `429`s appear; wait a minute and beacons flow again.
+- Curl the rollup route with the right bearer: `200` summary JSON; check rollup tables contain the expected counts. Curl it again immediately: identical rollup rows. Wrong bearer: `401`.
+- Set the DB clock scenario by inserting raw rows across two UTC days (SQL), run the job, then confirm `daily_salt` only retains today and `rollup_daily` has both days.
+
+### Commits
+- `feat(ingest): add beacon validation and path normalization`
+- `feat(ingest): add site origin check`
+- `feat(ingest): add per-site rate limiting`
+- `feat(ingest): add device classification and bot filtering`
+- `feat(ingest): add optional local geoip country lookup`
+- `feat(ingest): wire collect endpoint with hash and ip discard`
+- `feat(rollup): add hourly and daily recompute sql`
+- `feat(rollup): add job route with watermark catch-up and housekeeping`
+- `test(rollup): cover idempotency gap backfill and pruning`
+
+---
+
+## Phase 3 — Admin auth
+
+Goal: the single-admin login/session layer that will guard everything the dashboard does.
+
+### Definition of done
+- `lib/auth/password.ts` (scrypt verify + a `npm run hash-password` helper script that prints a hash for `.env`), `lib/auth/session.ts` (HMAC-signed cookie create/verify, 7-day expiry), `lib/auth/loginLimit.ts` (5/min in-memory).
+- `/login` page per `docs/design.md`; `POST /api/auth/login` and `POST /api/auth/logout` per the contract.
+- `middleware.ts` redirects unauthenticated page requests to `/login` and returns `401` on guarded APIs; tampered/expired cookies treated as absent.
+- Placeholder `/dashboard` page exists solely to prove the guard.
+
+### Manual test checklist
+- Wrong password: `401`, one generic inline message, no hint which field failed.
+- Six rapid failed logins: `429` on the sixth.
+- Correct login: redirected to `/dashboard`; cookie is HttpOnly and SameSite=Lax in devtools.
+- Edit the cookie value by one character: next request redirects to `/login`.
+- Logout: cookie cleared; `/dashboard` redirects to `/login`; `curl /api/collect` still works with no cookie.
+
+### Commits
+- `feat(auth): add scrypt password verify and hash helper`
+- `feat(auth): add signed session cookie`
+- `feat(auth): add login and logout routes with attempt limiting`
+- `feat(auth): guard dashboard routes with middleware`
+
+---
+
+## Phase 4 — Site management and tracking snippet
+
+Goal: the owner can register a site in the UI, copy a working snippet, install it, and watch the site flip to verified on the first pageview.
+
+### Definition of done
+- `/api/sites` CRUD per the contract (list, create with domain/name validation and `409` on duplicates, get one, delete with cascade).
+- `/sites` page: list with verified badges, register form with inline validation, delete with `ConfirmDialog`.
+- `/sites/[id]` page: `SnippetBlock` showing the copy-ready tag built from `APP_URL` + public ID; `VerifyStatus` polls `GET /api/sites/{id}` every 5 s until `verifiedAt` is set (ingestion sets it on the first accepted event).
+- `public/p.js`: reads `data-site`, sends the beacon on load and on `pushState`/`replaceState`/`popstate`, strips query/fragment client-side, uses `sendBeacon` with `fetch keepalive` fallback, no-ops entirely under DNT/GPC, never throws into the host page, sets no cookies/storage. A unit test fails if the file exceeds 1536 bytes.
+
+### Manual test checklist
+- Register a site with a valid domain: appears in the list as "waiting for first pageview".
+- Register the same domain again: inline conflict message. Register `https://foo.com/x`: inline validation message.
+- Serve a local test page with the snippet, open it: exactly one beacon in the network tab; site flips to verified within one poll.
+- In the test page, navigate via `history.pushState` and back button: one beacon each; no beacon on re-render without URL change.
+- Enable DNT in the browser: zero requests from the snippet.
+- Kill the pulse server and load the test page: host page console shows no uncaught errors.
+- Delete a site: confirm dialog, then gone; its rows are gone from `event_raw` and rollups (SQL check); other sites intact.
+
+### Commits
+- `feat(sites): add site crud api`
+- `feat(sites): add site list and register ui`
+- `feat(sites): add snippet block and verification polling`
+- `feat(ingest): mark site verified on first accepted event`
+- `feat(tracker): add pageview snippet with spa and dnt support`
+- `test(tracker): enforce snippet byte budget`
+
+---
+
+## Phase 5 — Dashboard
+
+Goal: the full read path — stats API over rollups and the dashboard UI with site/range pickers, tiles, chart, and breakdowns.
+
+### Definition of done
+- `/api/stats/summary`, `/api/stats/timeseries`, `/api/stats/breakdown` per the contract; params validated via `lib/stats/ranges.ts`; zero-filled buckets; sentinels mapped to display labels; a test asserts `lib/stats/queries.ts` never references `event_raw`.
+- `/dashboard/[siteId]?range=` renders: `SitePicker`, `RangePicker` (Today/7d/30d/90d, state in the URL), two `StatTile`s (pageviews, unique visitors with the "per day, summed" note on multi-day ranges), `TimeseriesChart` (uPlot, hourly for Today, daily otherwise, crosshair tooltip, legend for the two series), and four `BreakdownList` panels (pages, referrers, countries, devices) with proportional bars.
+- Loading skeletons per panel; per-panel empty states for a site with no data; per-panel friendly error state with retry on fetch failure.
+- `/dashboard` with no sites shows an empty state linking to `/sites`.
+
+### Manual test checklist
+- Seed known events (curl loop), run the job, open the dashboard: tiles, chart, and breakdowns show exactly the seeded numbers.
+- Switch ranges: Today shows hourly buckets, 7d/30d/90d show daily; every panel updates together; URL reflects the selection and reloading it restores the view.
+- Switch sites: numbers change to the other site's data only.
+- Brand-new site with zero events: empty states, not zero-height charts or NaNs.
+- Stop Postgres, refresh: friendly per-panel error with retry, detailed server log, no stack trace in the browser.
+- Unauthenticated curl of each stats endpoint: `401` with the standard error body.
+
+### Commits
+- `feat(stats): add range parsing and rollup query layer`
+- `feat(stats): add summary timeseries and breakdown endpoints`
+- `feat(dashboard): add shell with site and range pickers`
+- `feat(dashboard): add stat tiles`
+- `feat(dashboard): add timeseries chart`
+- `feat(dashboard): add breakdown panels`
+- `test(stats): cover ranges endpoints and rollup-only access`
+
+---
+
+## Phase 6 — Theming, polish, and e2e
+
+Goal: production feel — themes, accessibility pass, error pages, and an automated end-to-end smoke of the whole loop.
+
+### Definition of done
+- Light/dark theme (system preference on first load, toggle persisted to `pulse-theme`, no flash); both themes meet the contrast targets in `docs/design.md`; chart colors switch with the theme.
+- Accessibility pass: landmarks, one `h1` per page, labels on all inputs, visible focus rings, keyboard operability incl. pickers and dialogs, `prefers-reduced-motion` respected, chart data available as an accessible table alternative.
+- Styled `404` and error pages; every remaining rough empty/loading state polished.
+- Playwright smoke: log in, register a site, post beacons over HTTP, trigger the rollup route, assert the dashboard shows the non-zero numbers, log out.
+
+### Manual test checklist
+- Toggle theme; reload: persists; first-ever load matches OS preference; chart and bars legible in both themes.
+- Keyboard-only: log in, switch site and range, open and cancel the delete dialog, log out.
+- Visit an unknown route and an unknown site id: styled 404s.
+- `npm run test:e2e` passes locally against a fresh database.
+
+### Commits
+- `feat(theme): add persisted light dark theme`
+- `feat(a11y): add focus states labels and reduced motion handling`
+- `feat(ui): add styled 404 and error pages`
+- `test(e2e): add ingest-to-dashboard smoke test`
+
+---
+
+## Phase verification (run at the end of every phase)
+
+- [ ] `npm run dev` runs; the phase's pages/routes work without console errors or warnings.
+- [ ] `npm run build` succeeds; `npm run lint` clean.
+- [ ] `npm run test` passes (and `npm run test:e2e` from Phase 6 on).
+- [ ] Browser console and network tab clean; `/api/collect` responses set no cookies.
+- [ ] Unhappy paths for everything added this phase:
+  - [ ] Malformed, oversized, and unauthenticated requests get the documented status + standard error body, and store nothing.
+  - [ ] Postgres down: friendly errors, detailed server logs, no stack traces to clients.
+  - [ ] Duplicate submissions (double-click a form, replay a beacon, re-run the job): no corruption, no double-counting in rollups.
+  - [ ] Refresh mid-action (mid-login, mid-delete, dashboard mid-load): consistent state after reload.
+  - [ ] Empty states for zero sites, zero events, empty breakdowns.
+  - [ ] Long inputs: a 512-char path, a long site name, a long referrer — stored/rendered without breaking layout.
+- [ ] Privacy spot-check each phase from Phase 2 on: no IP or raw UA in any log line or table; `daily_salt` holds only today after a job run.
+- [ ] `docs/memory.md` updated with what shipped and any non-obvious decision with its reason.
+
+## Backlog
+
+- Custom events (named events with counts, no properties) — excluded from the PRD as a non-goal for v1; revisit only after all six phases ship.
