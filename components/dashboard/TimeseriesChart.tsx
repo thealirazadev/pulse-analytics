@@ -2,7 +2,7 @@
 
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Interval } from "@/lib/stats/ranges";
 
 export interface ChartPoint {
@@ -24,6 +24,17 @@ export function TimeseriesChart({
   interval: Interval;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const [themeVersion, setThemeVersion] = useState(0);
+
+  // Rebuild with fresh token colors when the light/dark class flips.
+  useEffect(() => {
+    const observer = new MutationObserver(() => setThemeVersion((v) => v + 1));
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const el = ref.current;
@@ -84,7 +95,7 @@ export function TimeseriesChart({
       resize.disconnect();
       plot.destroy();
     };
-  }, [points, interval]);
+  }, [points, interval, themeVersion]);
 
   return (
     <div

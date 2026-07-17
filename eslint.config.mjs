@@ -17,6 +17,7 @@ const eslintConfig = [
       "node_modules/**",
       "drizzle/**",
       "public/p.js",
+      "public/theme.js",
       "playwright-report/**",
       "test-results/**",
     ],

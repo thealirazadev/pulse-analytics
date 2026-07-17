@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { LogoutButton } from "./LogoutButton";
+import { ThemeToggle } from "./ThemeToggle";
 
 /**
  * App header: brand link, primary nav, and the logout action. The theme toggle
@@ -28,7 +29,10 @@ export function Header() {
             </Link>
           </nav>
         </div>
-        <LogoutButton />
+        <div className="flex items-center gap-1">
+          <ThemeToggle />
+          <LogoutButton />
+        </div>
       </div>
     </header>
   );
