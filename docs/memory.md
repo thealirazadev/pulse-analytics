@@ -9,9 +9,11 @@ Running log of what is done, what is in flight, and decisions worth remembering.
 
 - 2026-07-18 — Phase 2 done. Full ingestion path: `POST /api/collect` enforces 1KB cap (413), hand-rolled validation + path normalization (400), site lookup + Origin/Referer check (403), DNT/Sec-GPC drop (202, no store), per-site token bucket 10/s burst 50 (429), bot drop (202, no store), then device class + optional offline geo + salted visitor hash + single event_raw insert (202, no Set-Cookie). IP only ever in-memory, never stored/logged (log-capture test proves it). Rollup job `POST /api/jobs/rollup` (bearer auth, advisory lock -> 409 on concurrent): recomputes hourly buckets watermark->now, recomputes touched days incl. exact COUNT(DISTINCT) daily uniques, upsert-overwrite only, advances watermark past the 5-min grace, prunes raw >72h, destroys expired salts, caps 78 buckets/run. 77 tests pass (unit + Postgres integration): idempotency, gap backfill, distinct daily, sentinel mapping, prune, replay, lock. Verification: tsc/lint/build/vitest all clean.
 
+- 2026-07-18 — Phase 3 done. Single-admin auth with node:crypto only. scrypt password hash/verify (`salt:hash` hex, 16B salt/64B key) + `npm run hash-password` helper. HMAC-signed stateless session cookie `pulse_session` (base64url payload `{sub,exp}` + hex sig, 7-day expiry, HttpOnly/SameSite=Lax/Secure-in-prod); tamper and expiry verify to null. Login route: 5/min in-memory limiter (429), constant-time email+password check that never reveals which field failed (401), 204+cookie on success. Logout clears the cookie (401 if unauthenticated). `middleware.ts` guards /dashboard, /sites, /api/stats/*, /api/sites*, /api/auth/logout. Placeholder /dashboard proves the guard. 98 tests pass; tsc/lint/build clean.
+
 ## In progress
 
-- Phase 3 next: admin auth (scrypt password, signed session cookie, middleware guard).
+- Phase 4 next: site management CRUD + UI and the tracking snippet.
 
 ## Decisions log
 
@@ -28,3 +30,4 @@ Running log of what is done, what is in flight, and decisions worth remembering.
 - 2026-07-18 — visitor hash concatenation uses null-byte separators between fields (salt/site/ip/ua) to keep boundaries unambiguous; still sha256 truncated to 128 bits (32 hex).
 - 2026-07-18 — Rollup SQL binds all timestamps as ISO text with an explicit `::timestamptz` cast (never a raw JS Date) so the hand-written postgres.js queries survive cross-realm module loading in the test runner; drizzle inserts are unaffected. Vitest runs test files sequentially (`fileParallelism:false`) because integration tests share one Postgres database and truncate between cases.
 - 2026-07-18 — Rollup route validates the bearer token with `timingSafeEqual`. Collect `DNT`/bot drops return 202 (accepted, nothing stored) so probes cannot distinguish a tracked vs untracked site.
+- 2026-07-18 — Middleware runs on the Edge runtime, which lacks node:crypto, so it does a presence-only cookie gate (redirect pages to /login, 401 guarded APIs). Authoritative HMAC signature+expiry verification happens in every guarded route handler and server component (`readRequestSession`/`getServerSession`), so a forged cookie passes the gate but fails at the data layer. `lib/auth/constants.ts` holds the crypto-free cookie constants shared by Edge middleware and Node code.
