@@ -5,7 +5,7 @@ import { getDb } from "@/lib/db/client";
 import { site } from "@/lib/db/schema";
 import { apiError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
-import { serializeSite } from "../route";
+import { serializeSite } from "@/lib/sites/serialize";
 
 export const dynamic = "force-dynamic";
 

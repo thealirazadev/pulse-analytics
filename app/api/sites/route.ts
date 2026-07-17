@@ -2,9 +2,10 @@ import { desc } from "drizzle-orm";
 import { NextResponse, type NextRequest } from "next/server";
 import { readRequestSession } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
-import { site, type Site } from "@/lib/db/schema";
+import { site } from "@/lib/db/schema";
 import { apiError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
+import { serializeSite } from "@/lib/sites/serialize";
 import {
   generatePublicId,
   validateDomain,
@@ -12,24 +13,6 @@ import {
 } from "@/lib/sites/validate";
 
 export const dynamic = "force-dynamic";
-
-export interface SiteDTO {
-  id: string;
-  domain: string;
-  name: string;
-  createdAt: string;
-  verifiedAt: string | null;
-}
-
-export function serializeSite(row: Site): SiteDTO {
-  return {
-    id: row.publicId,
-    domain: row.domain,
-    name: row.name,
-    createdAt: new Date(row.createdAt).toISOString(),
-    verifiedAt: row.verifiedAt ? new Date(row.verifiedAt).toISOString() : null,
-  };
-}
 
 interface PgErrorFields {
   code?: string;
