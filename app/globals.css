@@ -1,0 +1,65 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-bg: #f9f9f7;
+  --color-surface: #fcfcfb;
+  --color-surface-2: #f0efec;
+  --color-border: #e1e0d9;
+  --color-fg: #0b0b0b;
+  --color-fg-muted: #52514e;
+  --color-fg-faint: #898781;
+  --color-accent: #2a78d6;
+  --color-accent-fg: #ffffff;
+  --color-accent-hover: #1c5cab;
+  --color-success: #006300;
+  --color-danger: #d03b3b;
+
+  --color-series-1: #2a78d6;
+  --color-series-2: #008300;
+  --color-grid: #e1e0d9;
+  --color-axis: #c3c2b7;
+  --color-axis-ink: #898781;
+}
+
+.dark {
+  --color-bg: #0d0d0d;
+  --color-surface: #1a1a19;
+  --color-surface-2: #242422;
+  --color-border: #2c2c2a;
+  --color-fg: #ffffff;
+  --color-fg-muted: #c3c2b7;
+  --color-fg-faint: #898781;
+  --color-accent: #3987e5;
+  --color-accent-fg: #0d0d0d;
+  --color-accent-hover: #5598e7;
+  --color-success: #0ca30c;
+  --color-danger: #d03b3b;
+
+  --color-series-1: #3987e5;
+  --color-series-2: #008300;
+  --color-grid: #2c2c2a;
+  --color-axis: #383835;
+  --color-axis-ink: #898781;
+}
+
+html {
+  color-scheme: light dark;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-fg);
+  line-height: 1.55;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
