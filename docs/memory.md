@@ -13,9 +13,11 @@ Running log of what is done, what is in flight, and decisions worth remembering.
 
 - 2026-07-18 — Phase 4 done. Site CRUD API (`/api/sites`, `/api/sites/[id]`): session-guarded, hand-rolled domain/name validation, pk_ public ids, 409 on duplicate domain (drizzle error unwrapped for the pg constraint), DELETE cascades events+rollups. UI: `/sites` list with register form + verified badges + delete ConfirmDialog; `/sites/[id]` shows copy-ready snippet + VerifyStatus polling every 5s. Ingestion marks a site verified on its first accepted event (idempotent). Tracking snippet `public/p.js` 1146 bytes (<1536): async, no deps, sendBeacon+fetch-keepalive fallback, sends on load + pushState/replaceState/popstate, strips query/fragment (uses location.pathname), no-ops under DNT/GPC, never throws, no cookies/storage. Shared UI: Button, Input, ConfirmDialog (custom focus-trapped modal), Header, LogoutButton. 125 tests pass (added component tests + jsdom snippet behavior tests); tsc/lint/build clean.
 
+- 2026-07-18 — Phase 5 done. Read path complete. `lib/stats/ranges.ts` (UTC range/dimension/limit parsing, bucket build, zero-fill) + `lib/stats/queries.ts` (rollup-only reads; static test asserts no raw-table reference). Endpoints `/api/stats/summary|timeseries|breakdown`: session-guarded, 400 invalid_range, 404 unknown site, sentinels mapped ((direct)/Unknown), zero-filled buckets. Dashboard `/dashboard/[siteId]?range=` (URL-driven): SitePicker (native select), RangePicker (roving-tabindex radiogroup), two StatTiles (with "per day, summed" caption on multi-day), uPlot TimeseriesChart (zero-based, 2 series, theme-token colors, responsive), four BreakdownList panels with proportional bars. Per-panel skeleton/empty/error+retry via a shared useResource hook. `/dashboard` redirects to first site or shows an empty state. 151 tests pass incl. an end-to-end ingest->rollup->stats pipeline test (substitutes for the un-runnable e2e). tsc/lint/build clean.
+
 ## In progress
 
-- Phase 5 next: stats API over rollups + dashboard UI (pickers, tiles, chart, breakdowns).
+- Phase 6 next: theming, a11y polish, styled 404/error pages, e2e (e2e likely a documented manual step given the sandbox cannot run next-server).
 
 ## Decisions log
 
