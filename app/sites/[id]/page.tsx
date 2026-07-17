@@ -31,7 +31,7 @@ export default async function SiteDetailPage({ params }: PageProps) {
   return (
     <>
       <Header />
-      <main className="mx-auto max-w-[720px] px-4 py-10 sm:px-6">
+      <main id="main" className="mx-auto max-w-[720px] px-4 py-10 sm:px-6">
         <Link
           href="/sites"
           className="text-sm text-accent hover:text-accent-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"

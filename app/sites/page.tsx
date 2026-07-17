@@ -20,7 +20,7 @@ export default async function SitesPage() {
   return (
     <>
       <Header />
-      <main className="mx-auto max-w-[720px] px-4 py-10 sm:px-6">
+      <main id="main" className="mx-auto max-w-[720px] px-4 py-10 sm:px-6">
         <h1 className="text-2xl font-[650]">Sites</h1>
         <p className="mt-1 text-fg-muted">
           Register a site to get its tracking snippet.

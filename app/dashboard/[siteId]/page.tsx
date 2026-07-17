@@ -38,7 +38,7 @@ export default async function SiteDashboard({ params, searchParams }: PageProps)
   return (
     <>
       <Header />
-      <main className="mx-auto max-w-[1100px] px-4 py-8 sm:px-6">
+      <main id="main" className="mx-auto max-w-[1100px] px-4 py-8 sm:px-6">
         <h1 className="sr-only">Analytics for {current.name}</h1>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <SitePicker sites={sites} current={siteId} range={range} />

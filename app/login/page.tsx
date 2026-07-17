@@ -38,7 +38,10 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-[420px] flex-col justify-center px-6">
+    <main
+      id="main"
+      className="mx-auto flex min-h-screen w-full max-w-[420px] flex-col justify-center px-6"
+    >
       <h1 className="mb-6 text-2xl font-[650]">Sign in to pulse</h1>
       <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">

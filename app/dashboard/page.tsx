@@ -26,7 +26,7 @@ export default async function DashboardIndex() {
   return (
     <>
       <Header />
-      <main className="mx-auto max-w-[720px] px-4 py-16 sm:px-6">
+      <main id="main" className="mx-auto max-w-[720px] px-4 py-16 sm:px-6">
         <h1 className="sr-only">Dashboard</h1>
         <EmptyState
           title="No sites yet"
