@@ -61,7 +61,7 @@ test("ingest to dashboard smoke", async ({ page }) => {
 
 test("rejects bad login and guards the dashboard", async ({ page }) => {
   await login(page, "definitely-wrong");
-  await expect(page.getByRole("alert")).toContainText(/invalid/i);
+  await expect(page.getByText(/invalid email or password/i)).toBeVisible();
 
   await page.context().clearCookies();
   await page.goto("/dashboard");
