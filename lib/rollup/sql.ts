@@ -1,0 +1,106 @@
+import type postgres from "postgres";
+
+/**
+ * Hand-written aggregation SQL. Every rollup write is INSERT ... ON CONFLICT
+ * DO UPDATE with freshly recomputed values (overwrite, never increment): this
+ * is what makes the job idempotent, replay-safe, and catch-up safe. Within a
+ * bucket/day's active window raw events only accumulate, so keys never vanish
+ * and an upsert fully reconstructs the row.
+ *
+ * `Queryable` is the base interface shared by the pooled client and a
+ * transaction handle from `begin`, so these run in either context.
+ */
+type Queryable = postgres.ISql;
+
+/** Recompute one hourly bucket (all sites) from raw events. */
+export async function recomputeHour(
+  sql: Queryable,
+  bucketStart: Date,
+): Promise<void> {
+  // Bind timestamps as ISO text with an explicit cast: robust across module
+  // realms (test runners) where a cross-realm Date would fail serialization.
+  const start = bucketStart.toISOString();
+  await sql`
+    INSERT INTO rollup_hourly (site_id, bucket, pageviews, visitors)
+    SELECT site_id,
+           date_trunc('hour', ts) AS bucket,
+           count(*)::int,
+           count(DISTINCT visitor_hash)::int
+    FROM event_raw
+    WHERE ts >= ${start}::timestamptz
+      AND ts < ${start}::timestamptz + interval '1 hour'
+    GROUP BY site_id, date_trunc('hour', ts)
+    ON CONFLICT (site_id, bucket)
+      DO UPDATE SET pageviews = EXCLUDED.pageviews, visitors = EXCLUDED.visitors
+  `;
+}
+
+/**
+ * Recompute every rollup for one UTC day (totals plus the four breakdowns).
+ * Daily `visitors` is the exact COUNT(DISTINCT visitor_hash) across the day —
+ * never a sum of hourly figures. NULL dimensions map to their sentinels
+ * ('' = direct referrer, 'ZZ' = unknown country).
+ */
+export async function recomputeDay(sql: Queryable, day: string): Promise<void> {
+  await sql`
+    INSERT INTO rollup_daily (site_id, day, pageviews, visitors)
+    SELECT site_id, ${day}::date, count(*)::int, count(DISTINCT visitor_hash)::int
+    FROM event_raw
+    WHERE ts >= ${day}::date AND ts < ${day}::date + interval '1 day'
+    GROUP BY site_id
+    ON CONFLICT (site_id, day)
+      DO UPDATE SET pageviews = EXCLUDED.pageviews, visitors = EXCLUDED.visitors
+  `;
+
+  await sql`
+    INSERT INTO rollup_page_daily (site_id, day, path, pageviews, visitors)
+    SELECT site_id, ${day}::date, path, count(*)::int, count(DISTINCT visitor_hash)::int
+    FROM event_raw
+    WHERE ts >= ${day}::date AND ts < ${day}::date + interval '1 day'
+    GROUP BY site_id, path
+    ON CONFLICT (site_id, day, path)
+      DO UPDATE SET pageviews = EXCLUDED.pageviews, visitors = EXCLUDED.visitors
+  `;
+
+  await sql`
+    INSERT INTO rollup_referrer_daily (site_id, day, referrer_host, pageviews, visitors)
+    SELECT site_id, ${day}::date, coalesce(referrer_host, ''),
+           count(*)::int, count(DISTINCT visitor_hash)::int
+    FROM event_raw
+    WHERE ts >= ${day}::date AND ts < ${day}::date + interval '1 day'
+    GROUP BY site_id, coalesce(referrer_host, '')
+    ON CONFLICT (site_id, day, referrer_host)
+      DO UPDATE SET pageviews = EXCLUDED.pageviews, visitors = EXCLUDED.visitors
+  `;
+
+  await sql`
+    INSERT INTO rollup_country_daily (site_id, day, country, pageviews, visitors)
+    SELECT site_id, ${day}::date, coalesce(country, 'ZZ'),
+           count(*)::int, count(DISTINCT visitor_hash)::int
+    FROM event_raw
+    WHERE ts >= ${day}::date AND ts < ${day}::date + interval '1 day'
+    GROUP BY site_id, coalesce(country, 'ZZ')
+    ON CONFLICT (site_id, day, country)
+      DO UPDATE SET pageviews = EXCLUDED.pageviews, visitors = EXCLUDED.visitors
+  `;
+
+  await sql`
+    INSERT INTO rollup_device_daily (site_id, day, device, pageviews, visitors)
+    SELECT site_id, ${day}::date, device, count(*)::int, count(DISTINCT visitor_hash)::int
+    FROM event_raw
+    WHERE ts >= ${day}::date AND ts < ${day}::date + interval '1 day'
+    GROUP BY site_id, device
+    ON CONFLICT (site_id, day, device)
+      DO UPDATE SET pageviews = EXCLUDED.pageviews, visitors = EXCLUDED.visitors
+  `;
+}
+
+/** Delete raw events older than the cutoff; returns the number pruned. */
+export async function pruneRawOlderThan(
+  sql: Queryable,
+  cutoff: Date,
+): Promise<number> {
+  const iso = cutoff.toISOString();
+  const result = await sql`DELETE FROM event_raw WHERE ts < ${iso}::timestamptz`;
+  return result.count;
+}
