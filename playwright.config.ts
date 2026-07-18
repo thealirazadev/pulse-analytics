@@ -1,5 +1,12 @@
 import { defineConfig, devices } from "@playwright/test";
 
+// Load .env so the spec can read ADMIN_EMAIL / CRON_SECRET; next start loads it too.
+try {
+  process.loadEnvFile(".env");
+} catch {
+  // rely on ambient env
+}
+
 const PORT = 3100;
 const BASE_URL = `http://localhost:${PORT}`;
 
