@@ -200,7 +200,11 @@ event_raw (
   visitor_hash  text NOT NULL            -- 32 hex chars (sha256 truncated to 128 bits)
 )
 CREATE INDEX event_raw_site_ts_idx ON event_raw (site_id, ts);
+CREATE INDEX event_raw_ts_idx ON event_raw (ts);
 ```
+
+`event_raw_ts_idx` serves the aggregation and prune paths, which filter on `ts` alone across
+all sites; the composite index cannot answer those without a sequential scan.
 
 Deliberately contains no IP, no raw UA, no full referrer URL, and no cross-day identifier. Pruned by the job after 72 hours (constant in code, not config).
 
