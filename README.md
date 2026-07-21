@@ -95,10 +95,16 @@ npm run test
 Other commands:
 
 ```bash
+npm run typecheck
 npm run lint
 npm run build
 npm run test:e2e   # Playwright smoke; needs a fresh DB and E2E_ADMIN_PASSWORD set
 ```
+
+GitHub Actions runs `typecheck`, `lint`, `test`, and `build` against a
+`postgres:16` service container on every push and pull request to `main`. The
+Playwright e2e smoke test is not part of CI — it needs a browser download and a
+running production server, so run it locally with `npm run test:e2e`.
 
 ## Privacy
 
