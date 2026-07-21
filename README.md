@@ -1,5 +1,8 @@
 # pulse-analytics
 
+[![CI](https://github.com/thealirazadev/pulse-analytics/actions/workflows/ci.yml/badge.svg)](https://github.com/thealirazadev/pulse-analytics/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 A self-hosted, privacy-first web analytics app. A site owner adds a tiny script
 snippet to their site; pulse collects pageviews without cookies or persistent
 identifiers, aggregates them into hourly and daily rollups, and shows a dashboard
@@ -105,6 +108,148 @@ GitHub Actions runs `typecheck`, `lint`, `test`, and `build` against a
 `postgres:16` service container on every push and pull request to `main`. The
 Playwright e2e smoke test is not part of CI — it needs a browser download and a
 running production server, so run it locally with `npm run test:e2e`.
+
+## Design decisions
+
+The trade-offs that shaped this codebase, and the alternatives that were
+considered and rejected.
+
+**Dashboards read rollups only, never raw events.** The system is three
+decoupled paths: the write path is dumb and cheap, the read path is dumb and
+cheap, and the aggregation job in between carries all the logic. No dashboard
+or stats query ever touches `event_raw`, so read latency is independent of
+traffic volume and a busy site cannot slow its own dashboard. The cost is that
+the dashboard is only as fresh as the last rollup run (5 minutes). This
+boundary is enforced, not just documented: a test statically asserts that
+`lib/stats/queries.ts` contains no reference to the raw table.
+
+**Aggregation recomputes and overwrites; it never increments.** Every rollup
+write is `INSERT ... ON CONFLICT DO UPDATE` with freshly recomputed values.
+That single choice buys idempotency, replay safety, and catch-up after missed
+cron runs at once: running the job twice, or re-covering an hour after a crash,
+always converges to the same rows. The job processes "watermark to now" rather
+than "the last hour", so a missed run self-heals on the next tick. An
+incrementing counter would have been cheaper per run but would drift
+permanently on any double-delivery or partial failure — and losing events is
+tolerable here, while corrupting rollups is not.
+
+**Cookieless visitor counting with a daily-rotating salt.** A visitor is
+identified as `sha256(daily_salt || site_id || ip || ua)`, truncated to 128
+bits. The IP exists only in memory for the geo lookup and the hash, and is
+never stored or logged. Nothing at all is written to the visitor's browser — no
+cookie, no localStorage, no fingerprint. Because the snippet and the endpoint
+store nothing on the visitor's device, there is no device storage access for a
+consent banner to gate, which is the point of the design. The salt's
+*destruction* is the real guarantee: the housekeeping step deletes every salt
+for a day before today, and recomputing past rollups never needs it (hashes are
+already materialized on the raw rows). Once a day ends, no party — the operator
+included — can recompute or verify that day's hashes, so cross-day linkage is
+impossible rather than merely disallowed.
+
+**Multi-day "visitors" is the sum of daily uniques.** Daily figures are an
+exact `COUNT(DISTINCT visitor_hash)` because the hash is stable within a UTC
+day. Across days the salt has rotated, so a 7-day total sums seven daily
+uniques and overcounts anyone who returns. This is the designed consequence of
+salt rotation, not a bug, and the UI labels it honestly ("per day, summed"). It
+is not fixable without keeping a stable cross-day identifier, which would
+destroy the privacy guarantee above.
+
+**PostgreSQL over SQLite.** Ingestion is write-heavy and concurrent: beacon
+bursts insert while the rollup job runs multi-statement read/recompute/upsert
+transactions over the same table. Postgres MVCC handles concurrent writers and
+the aggregation transaction without a global write lock, and provides
+`timestamptz`, `date_trunc`, and a robust `INSERT ... ON CONFLICT DO UPDATE`.
+SQLite serializes writers even in WAL mode, which would make the job and
+ingestion contend. The trade-off is one more service to run; SQLite would be
+simpler operationally but is the wrong shape for this write pattern.
+
+**Drizzle over Prisma.** The heart of this app is hand-written aggregation SQL:
+`GROUP BY` over time buckets, `COUNT(DISTINCT visitor_hash)`, and
+`ON CONFLICT DO UPDATE`. Drizzle is SQL-first — the schema is plain TypeScript,
+migrations are generated SQL files reviewed like code, and raw SQL composes
+naturally. Prisma's engine layer and generated client add weight and distance
+from SQL for no benefit here.
+
+**Hand-rolled auth instead of an auth library.** One admin with env-configured
+credentials does not justify NextAuth or a session store. `node:crypto`
+supplies scrypt for the password hash, HMAC-SHA-256 for a stateless signed
+session cookie, SHA-256 for visitor hashes, and `randomBytes` for salts. The
+cookie *is* the session — there is no server-side session table. One
+consequence worth naming: `middleware.ts` runs on the Edge runtime, which has
+no `node:crypto`, so it performs a presence-only cookie gate; authoritative
+signature and expiry verification happens in every guarded route handler and
+server component, so a forged cookie passes the gate but fails at the data
+layer. Validation is likewise hand-rolled: the beacon payload has three short
+fields and the stats API three enum-ish params, which does not warrant a schema
+library.
+
+**Cron hitting a protected route, not a standalone script.** Keeping the job in
+the app means one deployable and one env/DB/logger bootstrap, and it works with
+any scheduler that can run `curl`. The trade-off is that the job runs inside the
+web process, so the recompute is bounded (at most 78 hourly buckets per
+invocation; the next call continues) to avoid a route timeout on a large
+backfill.
+
+## Benchmarks
+
+Real measurements from this repository's scripts, not estimates. Reproduce with
+`scripts/bench/` (see below).
+
+**Conditions.** Single machine, everything local: 12th Gen Intel Core i5-1235U
+(10 cores / 12 threads), 31 GiB RAM, Ubuntu (kernel 6.8), Node 24.18,
+PostgreSQL 16.14 in Docker, Next.js 15.5 production build (`next start`). The
+load generator, the app server, and Postgres all share this one machine, and
+other containers were running, so these are conservative lower bounds rather
+than tuned peak figures. `GEOIP_DB_PATH` was empty, so no geo lookup was
+performed.
+
+**Ingest throughput** — `POST /api/collect` over HTTP, 20,000 requests at
+concurrency 64, spread over 500 registered sites so the per-site rate limiter
+(10/s sustained, burst 50) never engages. Every request returned `202` and was
+stored; there were no throttled or failed requests in any trial.
+
+| Trial | Requests | Concurrency | Result | Throughput |
+| --- | --- | --- | --- | --- |
+| 1 | 20,000 | 64 | 20,000 × `202` | 679 req/s |
+| 2 | 20,000 | 64 | 20,000 × `202` | 707 req/s |
+
+Each accepted request performs payload validation, a site lookup, the origin
+check, device classification, the salted visitor hash, and one `event_raw`
+insert.
+
+**Rollup aggregation** — one full `POST /api/jobs/rollup` over a synthetically
+seeded volume spanning a 24-hour window, with the watermark rewound so a single
+invocation recomputes all 25 hourly buckets plus the 2 UTC days they touch
+(6 statements per day). Events are seeded in ascending `ts` order to match what
+append-only ingestion actually produces on disk.
+
+| Raw events in window | Hourly buckets | Days recomputed | Aggregation time |
+| --- | --- | --- | --- |
+| 100,000 | 25 | 2 | 1.07 s |
+| 500,000 | 25 | 2 | 5.64 s |
+| 1,000,000 | 25 | 2 | 12.68 s |
+
+At 1,000,000 events the job finishes in well under the 5-minute cron interval,
+with room to spare. For reference, before `event_raw` was indexed on `ts` the
+same 1,000,000-event run took 22.49 s, because each hourly bucket sequentially
+scanned the whole raw table; the index turns each bucket's plan from a parallel
+sequential scan (120 ms) into an index scan (64 ms).
+
+Reproduce against a disposable database:
+
+```bash
+export DATABASE_URL=postgres://pulse:pulse@localhost:5432/pulse_test
+npm run build && npm run start -- -p 3999   # or: next start -p 3999
+
+# ingest throughput
+node scripts/bench/seed.mjs --sites 500
+node scripts/bench/ingest.mjs --url http://localhost:3999 \
+  --requests 20000 --concurrency 64 --sites 500
+
+# rollup aggregation
+node scripts/bench/seed.mjs --events 1000000 --hours 24
+node --env-file=.env scripts/bench/rollup.mjs --url http://localhost:3999 --hours 24
+```
 
 ## Privacy
 
