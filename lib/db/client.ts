@@ -19,6 +19,9 @@ export function getSql(): Sql {
   if (!sqlClient) {
     sqlClient = postgres(getEnv().DATABASE_URL, {
       max: 10,
+      // Pin every connection to UTC so date/time SQL never depends on the
+      // server's local zone; the whole app treats "day" as a UTC day.
+      connection: { TimeZone: "UTC" },
       // postgres.js emits NOTICE messages as warnings; silence them.
       onnotice: () => {},
     });
