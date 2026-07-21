@@ -54,7 +54,13 @@ export const eventRaw = pgTable(
     device: text("device").notNull(),
     visitorHash: text("visitor_hash").notNull(),
   },
-  (table) => [index("event_raw_site_ts_idx").on(table.siteId, table.ts)],
+  (table) => [
+    index("event_raw_site_ts_idx").on(table.siteId, table.ts),
+    // The rollup recomputes and the retention prune filter on ts alone (all
+    // sites at once), which the site-leading index cannot serve; without this
+    // every hourly bucket sequentially scans the whole raw table.
+    index("event_raw_ts_idx").on(table.ts),
+  ],
 );
 
 /** Read path. All rollups are recompute-and-overwrite, never incremented. */

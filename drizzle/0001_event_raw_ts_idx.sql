@@ -1,0 +1,1 @@
+CREATE INDEX "event_raw_ts_idx" ON "event_raw" USING btree ("ts");
