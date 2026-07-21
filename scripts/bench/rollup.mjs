@@ -22,14 +22,20 @@ const hours = Number(arg("hours", "24"));
 const url = process.env.DATABASE_URL;
 const secret = process.env.CRON_SECRET;
 if (!url || !secret) {
-  console.error("DATABASE_URL and CRON_SECRET are required (use --env-file=.env).");
+  console.error(
+    "DATABASE_URL and CRON_SECRET are required (use --env-file=.env).",
+  );
   process.exit(1);
 }
 
-const sql = postgres(url, { connection: { TimeZone: "UTC" }, onnotice: () => {} });
+const sql = postgres(url, {
+  connection: { TimeZone: "UTC" },
+  onnotice: () => {},
+});
 
 try {
-  const [{ count: eventCount }] = await sql`SELECT count(*)::int AS count FROM event_raw`;
+  const [{ count: eventCount }] =
+    await sql`SELECT count(*)::int AS count FROM event_raw`;
   // Rewind the watermark so the next run reprocesses the whole seeded window.
   const from = new Date(Date.now() - hours * 3_600_000).toISOString();
   await sql`
@@ -45,7 +51,9 @@ try {
   const secs = (Date.now() - t0) / 1000;
   const summary = await res.json();
 
-  console.log(`\nrollup: aggregated ${eventCount} raw events (window ${hours}h)`);
+  console.log(
+    `\nrollup: aggregated ${eventCount} raw events (window ${hours}h)`,
+  );
   console.log(`elapsed: ${secs.toFixed(2)}s (http ${res.status})`);
   console.log("summary:", summary);
 } finally {

@@ -59,7 +59,11 @@ await Promise.all(Array.from({ length: concurrency }, worker));
 const secs = (Date.now() - t0) / 1000;
 
 const ok = statuses.get(202) ?? 0;
-console.log(`\ningest: ${total} requests, concurrency ${concurrency}, ${siteCount} sites`);
+console.log(
+  `\ningest: ${total} requests, concurrency ${concurrency}, ${siteCount} sites`,
+);
 console.log(`elapsed: ${secs.toFixed(2)}s`);
-console.log(`throughput: ${(total / secs).toFixed(0)} req/s (accepted 202: ${ok})`);
+console.log(
+  `throughput: ${(total / secs).toFixed(0)} req/s (accepted 202: ${ok})`,
+);
 console.log("status breakdown:", Object.fromEntries(statuses));

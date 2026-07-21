@@ -140,7 +140,7 @@ never stored or logged. Nothing at all is written to the visitor's browser — n
 cookie, no localStorage, no fingerprint. Because the snippet and the endpoint
 store nothing on the visitor's device, there is no device storage access for a
 consent banner to gate, which is the point of the design. The salt's
-*destruction* is the real guarantee: the housekeeping step deletes every salt
+_destruction_ is the real guarantee: the housekeeping step deletes every salt
 for a day before today, and recomputing past rollups never needs it (hashes are
 already materialized on the raw rows). Once a day ends, no party — the operator
 included — can recompute or verify that day's hashes, so cross-day linkage is
@@ -174,7 +174,7 @@ from SQL for no benefit here.
 credentials does not justify NextAuth or a session store. `node:crypto`
 supplies scrypt for the password hash, HMAC-SHA-256 for a stateless signed
 session cookie, SHA-256 for visitor hashes, and `randomBytes` for salts. The
-cookie *is* the session — there is no server-side session table. One
+cookie _is_ the session — there is no server-side session table. One
 consequence worth naming: `middleware.ts` runs on the Edge runtime, which has
 no `node:crypto`, so it performs a presence-only cookie gate; authoritative
 signature and expiry verification happens in every guarded route handler and
@@ -208,10 +208,10 @@ concurrency 64, spread over 500 registered sites so the per-site rate limiter
 (10/s sustained, burst 50) never engages. Every request returned `202` and was
 stored; there were no throttled or failed requests in any trial.
 
-| Trial | Requests | Concurrency | Result | Throughput |
-| --- | --- | --- | --- | --- |
-| 1 | 20,000 | 64 | 20,000 × `202` | 679 req/s |
-| 2 | 20,000 | 64 | 20,000 × `202` | 707 req/s |
+| Trial | Requests | Concurrency | Result         | Throughput |
+| ----- | -------- | ----------- | -------------- | ---------- |
+| 1     | 20,000   | 64          | 20,000 × `202` | 679 req/s  |
+| 2     | 20,000   | 64          | 20,000 × `202` | 707 req/s  |
 
 Each accepted request performs payload validation, a site lookup, the origin
 check, device classification, the salted visitor hash, and one `event_raw`
@@ -224,10 +224,10 @@ invocation recomputes all 25 hourly buckets plus the 2 UTC days they touch
 append-only ingestion actually produces on disk.
 
 | Raw events in window | Hourly buckets | Days recomputed | Aggregation time |
-| --- | --- | --- | --- |
-| 100,000 | 25 | 2 | 1.07 s |
-| 500,000 | 25 | 2 | 5.64 s |
-| 1,000,000 | 25 | 2 | 12.68 s |
+| -------------------- | -------------- | --------------- | ---------------- |
+| 100,000              | 25             | 2               | 1.07 s           |
+| 500,000              | 25             | 2               | 5.64 s           |
+| 1,000,000            | 25             | 2               | 12.68 s          |
 
 At 1,000,000 events the job finishes in well under the 5-minute cron interval,
 with room to spare. For reference, before `event_raw` was indexed on `ts` the

@@ -28,7 +28,10 @@ const hours = Number(arg("hours", "24"));
 const sites = Number(arg("sites", "0"));
 const siteId = arg("site", "pk_bench_roll");
 
-const sql = postgres(url, { connection: { TimeZone: "UTC" }, onnotice: () => {} });
+const sql = postgres(url, {
+  connection: { TimeZone: "UTC" },
+  onnotice: () => {},
+});
 
 async function ensureIngestSites(n) {
   // A pool of verified sites so the per-site rate limiter is never the ingest
@@ -42,7 +45,9 @@ async function ensureIngestSites(n) {
     FROM generate_series(0, ${n - 1}) AS g
     ON CONFLICT (public_id) DO NOTHING
   `;
-  console.log(`ensured ${n} ingest sites (pk_bench000..pk_bench${String(n - 1).padStart(3, "0")})`);
+  console.log(
+    `ensured ${n} ingest sites (pk_bench000..pk_bench${String(n - 1).padStart(3, "0")})`,
+  );
 }
 
 async function seedEvents(publicId, count, spreadHours) {
