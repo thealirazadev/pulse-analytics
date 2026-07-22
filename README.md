@@ -16,6 +16,31 @@ raw events), a scheduled idempotent aggregation job (`/api/jobs/rollup`), and a
 read path (the dashboard, which queries only the rollup tables — never raw
 events).
 
+## Screenshots
+
+The dashboard over the last 7 days — pageviews and unique-visitor time-series,
+summary tiles, and the top pages / referrers / countries / devices breakdowns —
+in light and dark themes:
+
+![Pulse dashboard, light theme: 7-day pageviews and unique-visitor time-series with summary tiles and top pages, referrers, countries and device breakdown panels for the demo site Northwind Store](docs/images/dashboard-light.png)
+
+![Pulse dashboard, dark theme: the same 7-day view with the time-series chart and the four breakdown panels](docs/images/dashboard-dark.png)
+
+The "Today" range plots the hourly curve; the site-management screen lists
+registered sites with their verification status; and each site has a copy-paste
+install snippet:
+
+![Dashboard on the Today range, showing the hourly pageviews and visitors curve building through the day](docs/images/dashboard-today.png)
+
+![Site management screen listing the registered demo sites with verified badges and the add-site form](docs/images/sites.png)
+
+![Per-site install screen showing the copy-paste tracking snippet for the site](docs/images/snippet.png)
+
+These are genuine captures of the running app reading a seeded demo database
+(all data synthetic, `example.com`-style domains). Reproduce them with
+`scripts/demo/seed.mjs` (seed and aggregate) and `scripts/demo/capture.mjs`
+(ingest live beacons, run the rollup job, then screenshot).
+
 ## Stack
 
 - Next.js 15 (App Router) + TypeScript
