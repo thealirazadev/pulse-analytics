@@ -180,6 +180,45 @@ Goal: production feel — themes, accessibility pass, error pages, and an automa
 
 ---
 
+## Phase 7 — Custom events (promoted from Backlog)
+
+Goal: named custom events with counts only (no properties). A tracked page can report a named event (e.g. a signup) through a tiny snippet API; ingestion validates and stores it on a dedicated raw table; the aggregation job rolls it up per (site, name, UTC day) with the same recompute-and-overwrite idempotency as pageviews; the dashboard shows a top-events panel that reads the rollup only. Arbitrary event properties stay out of scope — that remains a non-goal.
+
+The write/read split, UTC-pinned aggregation, and privacy model are unchanged and non-negotiable: ingestion writes raw, dashboards read rollups only, and no IP is ever stored. Counts-only means custom events need no visitor hash at all.
+
+### Definition of done
+- The snippet exposes a documented `window.pulse('event', '<name>')` API that sends a `{ sid, n }` beacon over the same `sendBeacon`/`fetch keepalive` path; DNT/GPC, a missing `data-site`, or a missing script tag make it a safe no-op (it never throws into the host page); the file stays within its byte budget (or the budget is adjusted in the test and README with written justification).
+- `POST /api/collect` accepts the custom-event beacon: validates the event name (1–64 chars, `[A-Za-z0-9._-]` allowlist), enforces the same origin check, DNT/GPC drop, per-site rate limit, and bot drop as pageviews, stores no IP and no visitor hash (counts only), and inserts exactly one `custom_event_raw` row. The first accepted event still verifies the site. Bad names return `400 invalid_payload` and store nothing.
+- New tables via a forward migration: `custom_event_raw` (id, site_id, ts, name; ts index; 72-hour retention) and `rollup_custom_event_daily` (site_id, day, name, count; PK (site_id, day, name)).
+- The rollup job recomputes `rollup_custom_event_daily` for every touched UTC day inside the same watermark-driven, UTC-pinned, recompute-and-overwrite pass, using `date_trunc(..., 'UTC')`-consistent explicit `timestamptz` day bounds; it prunes `custom_event_raw` past 72 hours. Running the job twice yields identical counts.
+- `GET /api/stats/events?site=&range=&limit=` reads `rollup_custom_event_daily` only and returns top events by count for the range; a static test asserts the query references no raw table.
+- The dashboard shows a "Custom events" panel (name + count, proportional bars) for the selected site and range, reading the rollup endpoint only, with the same skeleton/empty/error states as the other panels.
+
+### Definition of done — tests
+- Unit: event-name validation (good names, over-length, bad charset, non-string, empty); the snippet stays under budget and defines a safe no-op under DNT.
+- Integration: a custom-event beacon stores exactly one row and no IP/hash; DNT/GPC and rate-limit drops store nothing; a bot UA is dropped; the job rolls up correct per-name counts and is byte-identical across two runs; pruning removes old custom raw without altering rollups.
+- Static: the custom-events read layer references no raw table (mirrors the existing `event_raw` guard).
+
+### Manual test checklist
+- Load a page with the snippet, run `pulse('event','signup')` in the console: exactly one beacon to `/api/collect` with body `{ sid, n:"signup" }`, `202`, one `custom_event_raw` row, no `Set-Cookie`.
+- `pulse('event','bad name!')` and a 100-char name: `400 invalid_payload`; nothing stored.
+- With DNT enabled: `pulse('event','x')` sends nothing. Over the per-site rate limit: `429`, nothing stored.
+- Curl the rollup route, then `GET /api/stats/events`: the seeded names appear with correct counts, ordered by count desc. Run the rollup again: identical counts.
+- Open the dashboard: the Custom events panel lists names and counts for the selected range; switching range updates it; a site with no events shows the empty state.
+
+### Commits
+- `docs(phases): promote custom events backlog item to phase 7`
+- `feat(db): add custom event raw and rollup tables`
+- `feat(ingest): validate and store named custom event beacons`
+- `feat(tracker): add custom event api to snippet`
+- `feat(rollup): aggregate custom event daily counts`
+- `feat(stats): add custom events endpoint over rollups`
+- `feat(dashboard): add top custom events panel`
+- `test(events): cover custom event ingest rollup and read path`
+- `docs: document custom events in architecture api and memory`
+
+---
+
 ## Phase verification (run at the end of every phase)
 
 - [ ] `npm run dev` runs; the phase's pages/routes work without console errors or warnings.
@@ -198,4 +237,4 @@ Goal: production feel — themes, accessibility pass, error pages, and an automa
 
 ## Backlog
 
-- Custom events (named events with counts, no properties) — excluded from the PRD as a non-goal for v1; revisit only after all six phases ship.
+- _(empty — "Custom events (named events with counts, no properties)" was promoted to Phase 7 on 2026-07-23 and implemented.)_
