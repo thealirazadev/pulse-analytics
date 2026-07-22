@@ -38,10 +38,12 @@ describe("validateBeacon", () => {
   it("accepts a valid beacon and normalizes the path", () => {
     const r = validateBeacon(body({ sid: "pk_x8f2ab31", p: "/pricing?x=1" }));
     expect(r.ok).toBe(true);
-    if (r.ok) {
+    if (r.ok && r.value.kind === "pageview") {
       expect(r.value.sid).toBe("pk_x8f2ab31");
       expect(r.value.path).toBe("/pricing");
       expect(r.value.referrer).toBeNull();
+    } else {
+      throw new Error("expected a pageview beacon");
     }
   });
 
@@ -49,7 +51,9 @@ describe("validateBeacon", () => {
     const r = validateBeacon(
       body({ sid: "pk_x8f2ab31", p: "/", r: "https://news.ycombinator.com/x" }),
     );
-    expect(r.ok && r.value.referrer).toBe("https://news.ycombinator.com/x");
+    expect(
+      r.ok && r.value.kind === "pageview" && r.value.referrer,
+    ).toBe("https://news.ycombinator.com/x");
   });
 
   it("rejects malformed json", () => {
@@ -76,5 +80,45 @@ describe("validateBeacon", () => {
   it("rejects arrays and non-objects", () => {
     expect(validateBeacon(body([1, 2, 3])).ok).toBe(false);
     expect(validateBeacon(body("string")).ok).toBe(false);
+  });
+});
+
+describe("validateBeacon custom events", () => {
+  it("accepts a named event beacon", () => {
+    const r = validateBeacon(body({ sid: "pk_x8f2ab31", n: "signup" }));
+    expect(r.ok).toBe(true);
+    if (r.ok && r.value.kind === "event") {
+      expect(r.value.sid).toBe("pk_x8f2ab31");
+      expect(r.value.name).toBe("signup");
+    } else {
+      throw new Error("expected an event beacon");
+    }
+  });
+
+  it("accepts allowed name characters", () => {
+    for (const n of ["Add_To-Cart.v2", "a", "A1", "x".repeat(64)]) {
+      expect(validateBeacon(body({ sid: "pk_x8f2ab31", n })).ok).toBe(true);
+    }
+  });
+
+  it("rejects bad names: charset, length, empty, non-string", () => {
+    for (const n of [
+      "bad name",
+      "with!bang",
+      "emoji😀",
+      "a/b",
+      "",
+      "x".repeat(65),
+    ]) {
+      expect(validateBeacon(body({ sid: "pk_x8f2ab31", n })).ok).toBe(false);
+    }
+    expect(validateBeacon(body({ sid: "pk_x8f2ab31", n: 5 })).ok).toBe(false);
+  });
+
+  it("prefers the event shape when n is present, ignoring p", () => {
+    const r = validateBeacon(
+      body({ sid: "pk_x8f2ab31", n: "signup", p: "/ignored" }),
+    );
+    expect(r.ok && r.value.kind).toBe("event");
   });
 });

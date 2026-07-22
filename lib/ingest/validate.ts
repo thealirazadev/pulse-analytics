@@ -2,9 +2,18 @@
 
 export const MAX_BEACON_BYTES = 1024;
 export const MAX_PATH_LENGTH = 512;
+export const MAX_EVENT_NAME_LENGTH = 64;
 export const SID_PATTERN = /^pk_[a-z0-9]{8}$/;
+/**
+ * Custom-event name allowlist: letters, digits, dot, underscore, hyphen; 1-64
+ * chars. Deliberately conservative — no spaces or punctuation — since names are
+ * rendered on the dashboard and used as rollup primary-key values.
+ */
+export const EVENT_NAME_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
 
-export interface BeaconPayload {
+/** A pageview beacon: `{ sid, p, r }`. */
+export interface PageviewBeacon {
+  kind: "pageview";
   sid: string;
   /** Normalized: begins with '/', no query string, no fragment. */
   path: string;
@@ -12,8 +21,17 @@ export interface BeaconPayload {
   referrer: string | null;
 }
 
+/** A named custom-event beacon: `{ sid, n }`. Counts only, no properties. */
+export interface EventBeacon {
+  kind: "event";
+  sid: string;
+  name: string;
+}
+
+export type Beacon = PageviewBeacon | EventBeacon;
+
 export type ValidationResult =
-  | { ok: true; value: BeaconPayload }
+  | { ok: true; value: Beacon }
   | { ok: false };
 
 /**
@@ -53,6 +71,15 @@ export function validateBeacon(rawBody: string): ValidationResult {
     return { ok: false };
   }
 
+  // The presence of `n` selects the custom-event shape. Counts only: no path,
+  // no referrer, no properties.
+  if (body.n !== undefined && body.n !== null) {
+    if (typeof body.n !== "string" || !EVENT_NAME_PATTERN.test(body.n)) {
+      return { ok: false };
+    }
+    return { ok: true, value: { kind: "event", sid, name: body.n } };
+  }
+
   const path = normalizePath(body.p);
   if (path === null) {
     return { ok: false };
@@ -64,5 +91,5 @@ export function validateBeacon(rawBody: string): ValidationResult {
     referrer = body.r;
   }
 
-  return { ok: true, value: { sid, path, referrer } };
+  return { ok: true, value: { kind: "pageview", sid, path, referrer } };
 }

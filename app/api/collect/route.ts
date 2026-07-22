@@ -1,7 +1,8 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { NextResponse, type NextRequest } from "next/server";
 import { getDb } from "@/lib/db/client";
-import { eventRaw, site } from "@/lib/db/schema";
+import type { Database } from "@/lib/db/client";
+import { customEventRaw, eventRaw, site } from "@/lib/db/schema";
 import { apiError } from "@/lib/errors";
 import { classifyDevice, isBot } from "@/lib/ingest/device";
 import { lookupCountry } from "@/lib/ingest/geo";
@@ -18,6 +19,19 @@ export const dynamic = "force-dynamic";
 /** 202 with no body and, crucially, no Set-Cookie. */
 function accepted(): NextResponse {
   return new NextResponse(null, { status: 202 });
+}
+
+/** First accepted event verifies the site; idempotent (only when still null). */
+async function markVerified(
+  db: Database,
+  siteId: number,
+  verifiedAt: Date | null,
+): Promise<void> {
+  if (verifiedAt !== null) return;
+  await db
+    .update(site)
+    .set({ verifiedAt: new Date() })
+    .where(and(eq(site.id, siteId), isNull(site.verifiedAt)));
 }
 
 /** Best-effort client IP from proxy headers; only used in-memory, never stored. */
@@ -124,7 +138,26 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return accepted();
     }
 
-    // 8. Derive device, country, and visitor hash; the IP never leaves this scope.
+    // 8a. Custom event: counts only. No device, no geo, no IP, no visitor hash.
+    if (beacon.kind === "event") {
+      await db
+        .insert(customEventRaw)
+        .values({ siteId: matched.id, name: beacon.name });
+      await markVerified(db, matched.id, matched.verifiedAt);
+
+      logger.info("ingest_accepted", {
+        siteId: matched.id,
+        eventName: beacon.name,
+        kind: "event",
+        status: 202,
+        stored: true,
+        durationMs: Date.now() - start,
+      });
+      return accepted();
+    }
+
+    // 8b. Pageview: derive device, country, and visitor hash; the IP never
+    // leaves this scope.
     const device = classifyDevice(userAgent);
     const referrerHost = reduceReferrer(beacon.referrer, matched.domain);
     const ip = extractClientIp(req);
@@ -141,13 +174,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       visitorHash,
     });
 
-    // First accepted event verifies the site (idempotent: only when still null).
-    if (matched.verifiedAt === null) {
-      await db
-        .update(site)
-        .set({ verifiedAt: new Date() })
-        .where(and(eq(site.id, matched.id), isNull(site.verifiedAt)));
-    }
+    await markVerified(db, matched.id, matched.verifiedAt);
 
     logger.info("ingest_accepted", {
       siteId: matched.id,
