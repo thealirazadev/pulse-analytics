@@ -105,4 +105,44 @@ describe("snippet behavior", () => {
     run();
     expect(beacon).not.toHaveBeenCalled();
   });
+
+  it("records a named custom event via the pulse API", () => {
+    installScript();
+    run();
+    beacon.mockClear();
+    (window as unknown as { pulse: (t: string, e: string) => void }).pulse(
+      "event",
+      "signup",
+    );
+    expect(beacon).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(String(beacon.mock.calls[0]![1]));
+    expect(body).toEqual({ sid: "pk_test0001", n: "signup" });
+    expect(beacon.mock.calls[0]![0]).toBe("https://app.example/api/collect");
+  });
+
+  it("ignores pulse calls with a wrong type or missing name", () => {
+    installScript();
+    run();
+    beacon.mockClear();
+    const p = (
+      window as unknown as { pulse: (t?: string, e?: string) => void }
+    ).pulse;
+    p("event");
+    p("nope", "signup");
+    p();
+    expect(beacon).not.toHaveBeenCalled();
+  });
+
+  it("defines pulse as a safe no-op under Do Not Track", () => {
+    Object.defineProperty(navigator, "doNotTrack", {
+      value: "1",
+      configurable: true,
+    });
+    installScript();
+    run();
+    const w = window as unknown as { pulse: (t: string, e: string) => void };
+    expect(typeof w.pulse).toBe("function");
+    expect(() => w.pulse("event", "signup")).not.toThrow();
+    expect(beacon).not.toHaveBeenCalled();
+  });
 });
