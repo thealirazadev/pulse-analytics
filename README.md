@@ -96,6 +96,22 @@ npm run build && npm run start
 Log in at `/login`, register a site under `/sites`, copy its snippet into your
 site's `<head>`, and the site flips to verified on the first pageview.
 
+### Tracking custom events
+
+The snippet exposes a tiny global for named events — counts only, no properties:
+
+```html
+<script>
+  pulse("event", "signup");
+</script>
+```
+
+Call `pulse('event', '<name>')` on any interaction you want to count (a signup,
+a purchase, a demo request). Names must match `^[A-Za-z0-9._-]{1,64}$`. The call
+reuses the same beacon transport as pageviews, sends nothing under DNT/GPC or
+before the `data-site` snippet has loaded, and never throws into your page.
+Counts appear in the dashboard's "Custom events" panel after the next rollup run.
+
 ### Scheduling the aggregation job
 
 The dashboard is only as fresh as the last rollup run. Schedule a call every

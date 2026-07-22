@@ -12,36 +12,39 @@ The system is three decoupled paths. The write path is dumb and cheap, the read 
 4. It then reads the client IP from the connection/forwarded header, looks up the country in a local GeoIP database, computes `visitor_hash = sha256(daily_salt || site_id || ip || ua)` using today's UTC salt, and lets the IP go out of scope. The IP is never stored and never logged.
 5. One row is inserted into `event_raw` (ts, path, referrer host, country, device, visitor hash). Response `202`, no body, no `Set-Cookie`.
 
+Custom events share this path. The snippet also exposes `window.pulse('event', '<name>')`, which sends a `{ sid, n }` beacon to the same `POST /api/collect`. The handler runs the identical guards (steps 1–3 and the origin/DNT/rate-limit/bot checks), and because custom events are counts-only it inserts one `custom_event_raw` row (site, ts, name) with no device, country, IP, or visitor hash — the IP is never even read. Invalid names (`^[A-Za-z0-9._-]{1,64}$`) return `400`; the first accepted event of either kind verifies the site.
+
 ### Aggregation job (the bridge)
 
 6. A scheduler (system cron, a container cron sidecar, or a platform cron) calls `POST /api/jobs/rollup` every 5 minutes with `Authorization: Bearer $CRON_SECRET`.
-7. The job recomputes every hourly bucket from `rollup_watermark.finalized_through` up to and including the current partial hour, straight from `event_raw`, and upserts the results (overwrite, never increment). It then recomputes the daily tables for every UTC day touched by those hours. Recompute-and-overwrite is the idempotency mechanism: running the job twice, or re-covering an hour after a crash, always converges to the same rows.
+7. The job recomputes every hourly bucket from `rollup_watermark.finalized_through` up to and including the current partial hour, straight from `event_raw`, and upserts the results (overwrite, never increment). It then recomputes the daily tables for every UTC day touched by those hours — including `rollup_custom_event_daily` from `custom_event_raw`, in the same per-day transaction. Recompute-and-overwrite is the idempotency mechanism: running the job twice, or re-covering an hour after a crash, always converges to the same rows.
 8. The watermark advances past an hour only once the hour has been over for a 5-minute grace period. Because the job always processes "watermark to now" rather than "the last hour", missed runs self-heal: the next run backfills the whole gap. The catch-up horizon equals raw retention (72 hours); gaps older than that are permanently lost, which is acceptable (losing events is tolerable, corrupting rollups is not).
-9. Housekeeping in the same run: delete `event_raw` rows older than 72 hours whose day is finalized, and delete `daily_salt` rows for days before the current UTC day (salt destruction — see data model).
+9. Housekeeping in the same run: delete `event_raw` and `custom_event_raw` rows older than 72 hours whose day is finalized, and delete `daily_salt` rows for days before the current UTC day (salt destruction — see data model).
 
 ### Read path (dashboard)
 
 10. The admin logs in at `/login`; `POST /api/auth/login` verifies the env-configured credentials and sets a signed, HttpOnly session cookie. `middleware.ts` guards `/dashboard`, `/sites`, `/api/stats/*`, and `/api/sites*`.
-11. Dashboard pages are a server-rendered shell; the chart, tiles, and breakdown panels are client components that fetch `GET /api/stats/summary|timeseries|breakdown` when the site or range picker changes. Those routes read only the rollup tables via `lib/stats/queries.ts`.
+11. Dashboard pages are a server-rendered shell; the chart, tiles, breakdown panels, and the custom-events panel are client components that fetch `GET /api/stats/summary|timeseries|breakdown|events` when the site or range picker changes. Those routes read only the rollup tables via `lib/stats/queries.ts`.
 
 ```
 Tracked site (browser)
-  |  p.js: pageview + SPA route changes, DNT/GPC-aware
+  |  p.js: pageview + SPA route changes + pulse('event',name), DNT/GPC-aware
   v
 POST /api/collect  -- validate size/shape, origin vs site, rate limit,
   |                   UA -> device (drop bots), IP -> country -> hash -> discard IP
   v
-event_raw  (72 h retention)                          WRITE PATH
+event_raw + custom_event_raw  (72 h retention)       WRITE PATH
   |
   |  POST /api/jobs/rollup (cron, Bearer CRON_SECRET, every 5 min)
   |  recompute hours since watermark -> upsert-overwrite -> daily recompute
   |  prune old raw, destroy old salts, advance watermark
   v
 rollup_hourly / rollup_daily / rollup_{page,referrer,country,device}_daily
+rollup_custom_event_daily
   |
   |  GET /api/stats/* (session cookie)                READ PATH
   v
-Dashboard (tiles, time-series chart, breakdowns)
+Dashboard (tiles, time-series chart, breakdowns, custom events)
 ```
 
 ## Proposed folder / file tree
@@ -75,6 +78,7 @@ pulse-analytics/
       stats/summary/route.ts      Totals for a range
       stats/timeseries/route.ts   Hourly/daily points for a range
       stats/breakdown/route.ts    Top-N per dimension
+      stats/events/route.ts       Top-N custom events by count (rollup-only)
   middleware.ts                   Session check for dashboard pages and APIs
   components/
     layout/
@@ -86,6 +90,8 @@ pulse-analytics/
       StatTile.tsx                Value + label (+ optional delta later)
       TimeseriesChart.tsx         Client; uPlot wrapper, crosshair tooltip
       BreakdownList.tsx           Top-N rows with proportional bars
+      CustomEventsPanel.tsx       Client; fetches /api/stats/events
+      CustomEventsList.tsx        Top-N custom events with proportional bars
     sites/
       SiteForm.tsx                Register form with inline validation
       SnippetBlock.tsx            Copy-ready script tag
@@ -208,6 +214,26 @@ all sites; the composite index cannot answer those without a sequential scan.
 
 Deliberately contains no IP, no raw UA, no full referrer URL, and no cross-day identifier. Pruned by the job after 72 hours (constant in code, not config).
 
+### custom_event_raw (write path; 72-hour retention)
+
+```
+custom_event_raw (
+  id       bigserial PRIMARY KEY,
+  site_id  integer NOT NULL REFERENCES site(id) ON DELETE CASCADE,
+  ts       timestamptz NOT NULL DEFAULT now(),
+  name     text NOT NULL            -- validated: ^[A-Za-z0-9._-]{1,64}$
+)
+CREATE INDEX custom_event_raw_ts_idx ON custom_event_raw (ts);
+```
+
+Named custom events are **counts only, with no properties** — the deliberate v1
+scope. A row therefore carries no device, country, IP, or visitor hash: nothing
+beyond which named event happened, at what UTC instant, for which site. The
+snippet reports one through the `pulse('event', '<name>')` API (see below); the
+collect handler applies the identical guards it uses for pageviews (size, shape,
+site/origin, DNT/GPC, rate limit, bot drop) and never reads the IP. Pruned by
+the job after 72 hours, like `event_raw`.
+
 ### Rollup tables (read path — dashboards read only these)
 
 All rollups are written with `INSERT ... ON CONFLICT (pk) DO UPDATE SET` using freshly recomputed values — overwrite, never increment.
@@ -250,7 +276,18 @@ rollup_device_daily (
   site_id, day, device text NOT NULL, pageviews, visitors,
   PRIMARY KEY (site_id, day, device)
 )
+
+rollup_custom_event_daily (
+  site_id, day, name text NOT NULL, count integer NOT NULL,  -- counts only
+  PRIMARY KEY (site_id, day, name)
+)
 ```
+
+`rollup_custom_event_daily` is a per-(site, name, UTC day) occurrence count,
+recomputed and overwritten from `custom_event_raw` exactly like the pageview
+breakdowns. It has no `visitors` column: custom events are counts-only, so there
+is no distinct-visitor figure. The dashboard's "Custom events" panel sums
+`count` over the selected range grouped by name, top-N by count.
 
 NULL dimensions are mapped to sentinels (`''` direct, `'ZZ'` unknown) because primary-key columns cannot be NULL; `lib/stats/queries.ts` maps them back to display labels.
 

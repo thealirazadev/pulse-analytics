@@ -36,6 +36,8 @@ Request body:
 | `p` | yes | Path beginning with `/`, max 512 chars after server-side stripping of query string and fragment |
 | `r` | no | Referrer URL; server keeps the hostname only, drops it if it equals the site's own domain, null if unparsable |
 
+**Custom event beacon.** A named custom event is the same endpoint with a different body — `{ "sid": "pk_x8f2ab31", "n": "signup" }`, where `n` replaces `p`/`r`. `n` must match `^[A-Za-z0-9._-]{1,64}$` (counts only, no properties). Every guard (origin, DNT/GPC drop, per-site rate limit, bot drop) and every response in the table below is identical to a pageview; a bad `n` returns `400 invalid_payload`. The accepted row is written to `custom_event_raw` with no device, country, IP, or visitor hash — the IP is never read for custom events. Emitted from the snippet with `pulse('event', 'signup')`.
+
 Server-derived (never sent by the client): timestamp, device class (from the `User-Agent` header), country (local GeoIP on the connection IP), visitor hash. The IP is discarded after derivation.
 
 Responses (success responses have no body and never set cookies):
@@ -158,6 +160,21 @@ Buckets with no data are included with zeros so charts render continuous axes. `
 
 Rows are ordered by pageviews desc. Sentinels are translated before the response: referrer `''` becomes `"(direct)"`, country `'ZZ'` becomes `"Unknown"`. `400` `invalid_range` for a bad dimension or limit.
 
+### GET /api/stats/events?site=pk_x8f2ab31&range=30d&limit=10
+
+| Param | Values |
+| --- | --- |
+| `limit` | 1–50, default 10 |
+
+`200`:
+
+```json
+{ "rows": [ { "name": "signup", "count": 312 },
+            { "name": "purchase", "count": 88 } ] }
+```
+
+Top named custom events by summed `count` over the range, ordered by count desc. Reads `rollup_custom_event_daily` only (never a raw table). `400` `invalid_range` for a bad range or limit; `404` `not_found` for an unknown site.
+
 ---
 
 ## Jobs
@@ -172,6 +189,8 @@ Rows are ordered by pageviews desc. Sentinels are translated before the response
 { "hoursProcessed": 2, "daysRecomputed": 1, "rawPruned": 1840,
   "saltsDestroyed": 1, "finalizedThrough": "2026-07-18T08:00:00Z" }
 ```
+
+`rawPruned` is the total rows removed from both raw tables (`event_raw` and `custom_event_raw`), which share the 72-hour retention window. `daysRecomputed` covers the pageview and custom-event daily rollups together.
 
 - `401` `unauthorized` — missing/wrong bearer token.
 - `409` `conflict` — a previous run is still in progress (advisory lock held); the caller just waits for the next tick.
