@@ -2,6 +2,7 @@ import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import {
   rollupCountryDaily,
+  rollupCustomEventDaily,
   rollupDaily,
   rollupDeviceDaily,
   rollupHourly,
@@ -26,6 +27,11 @@ export interface BreakdownRow {
   key: string;
   pageviews: number;
   visitors: number;
+}
+
+export interface CustomEventRow {
+  name: string;
+  count: number;
 }
 
 /** Resolve a public site id to its internal id, or null if unknown. */
@@ -165,4 +171,27 @@ export async function getBreakdown(
     pageviews: r.pageviews,
     visitors: r.visitors,
   }));
+}
+
+/** Top named custom events by summed count over the range (rollup table only). */
+export async function getCustomEvents(
+  siteId: number,
+  range: ResolvedRange,
+  limit: number,
+): Promise<CustomEventRow[]> {
+  const count = sql<number>`sum(${rollupCustomEventDaily.count})::int`;
+  const rows = await getDb()
+    .select({ name: rollupCustomEventDaily.name, count })
+    .from(rollupCustomEventDaily)
+    .where(
+      and(
+        eq(rollupCustomEventDaily.siteId, siteId),
+        gte(rollupCustomEventDaily.day, range.from),
+        lte(rollupCustomEventDaily.day, range.to),
+      ),
+    )
+    .groupBy(rollupCustomEventDaily.name)
+    .orderBy(desc(count))
+    .limit(limit);
+  return rows;
 }
