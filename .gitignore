@@ -10,6 +10,9 @@
 /blob-report
 /.playwright
 
+# demo screenshot capture output (regenerate with scripts/demo/capture.mjs)
+/scripts/demo/shots
+
 # next.js
 /.next/
 /out/
