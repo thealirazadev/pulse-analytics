@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { Header } from "@/components/layout/Header";
 import { BreakdownPanel } from "@/components/dashboard/BreakdownPanel";
 import { ChartPanel } from "@/components/dashboard/ChartPanel";
+import { CustomEventsPanel } from "@/components/dashboard/CustomEventsPanel";
 import { RangePicker } from "@/components/dashboard/RangePicker";
 import { SitePicker } from "@/components/dashboard/SitePicker";
 import { StatTilesPanel } from "@/components/dashboard/StatTilesPanel";
@@ -73,6 +74,7 @@ export default async function SiteDashboard({ params, searchParams }: PageProps)
               title="Devices"
             />
           </div>
+          <CustomEventsPanel siteId={siteId} range={range} />
         </div>
       </main>
     </>
