@@ -103,6 +103,28 @@ export async function recomputeDay(sql: Queryable, day: string): Promise<void> {
   `;
 }
 
+/**
+ * Recompute the custom-event daily counts for one UTC day. Counts only — one
+ * row per (site, name) with its occurrence count, no distinct-visitor figure.
+ * Same recompute-and-overwrite idempotency and explicit UTC timestamptz day
+ * bounds as recomputeDay.
+ */
+export async function recomputeCustomEventDay(
+  sql: Queryable,
+  day: string,
+): Promise<void> {
+  const dayStart = `${day}T00:00:00Z`;
+  await sql`
+    INSERT INTO rollup_custom_event_daily (site_id, day, name, "count")
+    SELECT site_id, ${day}::date, name, count(*)::int
+    FROM custom_event_raw
+    WHERE ts >= ${dayStart}::timestamptz AND ts < ${dayStart}::timestamptz + interval '1 day'
+    GROUP BY site_id, name
+    ON CONFLICT (site_id, day, name)
+      DO UPDATE SET "count" = EXCLUDED."count"
+  `;
+}
+
 /** Delete raw events older than the cutoff; returns the number pruned. */
 export async function pruneRawOlderThan(
   sql: Queryable,
@@ -110,5 +132,15 @@ export async function pruneRawOlderThan(
 ): Promise<number> {
   const iso = cutoff.toISOString();
   const result = await sql`DELETE FROM event_raw WHERE ts < ${iso}::timestamptz`;
+  return result.count;
+}
+
+/** Delete custom events older than the cutoff; returns the number pruned. */
+export async function pruneCustomEventRawOlderThan(
+  sql: Queryable,
+  cutoff: Date,
+): Promise<number> {
+  const iso = cutoff.toISOString();
+  const result = await sql`DELETE FROM custom_event_raw WHERE ts < ${iso}::timestamptz`;
   return result.count;
 }

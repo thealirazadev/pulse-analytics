@@ -1,7 +1,13 @@
 import { getSql } from "@/lib/db/client";
 import { logger } from "@/lib/logger";
 import { destroyExpiredSalts, utcDayString } from "@/lib/privacy/salt";
-import { pruneRawOlderThan, recomputeDay, recomputeHour } from "./sql";
+import {
+  pruneCustomEventRawOlderThan,
+  pruneRawOlderThan,
+  recomputeCustomEventDay,
+  recomputeDay,
+  recomputeHour,
+} from "./sql";
 
 const HOUR_MS = 3_600_000;
 const RAW_RETENTION_HOURS = 72;
@@ -107,7 +113,12 @@ async function execute(now: Date): Promise<RollupSummary> {
   const touchedDays = new Set(processed.map((b) => utcDayString(b)));
   for (const day of touchedDays) {
     try {
-      await sql.begin((tx) => recomputeDay(tx, day));
+      // Pageview rollups and custom-event rollups for the day share one
+      // transaction so the day's read-path state advances atomically.
+      await sql.begin(async (tx) => {
+        await recomputeDay(tx, day);
+        await recomputeCustomEventDay(tx, day);
+      });
     } catch (err) {
       logger.error("rollup_day_failed", {
         day,
@@ -138,7 +149,11 @@ async function execute(now: Date): Promise<RollupSummary> {
   // Housekeeping: prune raw past retention (anything that old is finalized) and
   // destroy salts for days before today.
   const cutoff = new Date(nowMs - RAW_RETENTION_HOURS * HOUR_MS);
-  const rawPruned = await pruneRawOlderThan(sql, cutoff);
+  // rawPruned is the total rows removed from both raw tables (pageviews and
+  // custom events), which share the same 72-hour retention window.
+  const rawPruned =
+    (await pruneRawOlderThan(sql, cutoff)) +
+    (await pruneCustomEventRawOlderThan(sql, cutoff));
   const saltsDestroyed = await destroyExpiredSalts(utcDayString(now));
 
   const summary: RollupSummary = {
