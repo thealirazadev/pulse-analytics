@@ -11,4 +11,9 @@ describe("read-path isolation", () => {
     const source = readFileSync(resolve("lib/stats/queries.ts"), "utf8");
     expect(source).not.toMatch(/event_raw|eventRaw/);
   });
+
+  it("lib/stats/queries.ts never references the custom event raw table", () => {
+    const source = readFileSync(resolve("lib/stats/queries.ts"), "utf8");
+    expect(source).not.toMatch(/custom_event_raw|customEventRaw/);
+  });
 });
