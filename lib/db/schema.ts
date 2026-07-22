@@ -63,6 +63,24 @@ export const eventRaw = pgTable(
   ],
 );
 
+/**
+ * Write path for named custom events. Counts only — no properties, no visitor
+ * hash, no IP. 72-hour retention, pruned by the rollup job like event_raw.
+ */
+export const customEventRaw = pgTable(
+  "custom_event_raw",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    siteId: integer("site_id")
+      .notNull()
+      .references(() => site.id, { onDelete: "cascade" }),
+    ts: timestamp("ts", { withTimezone: true }).notNull().defaultNow(),
+    name: text("name").notNull(),
+  },
+  // The rollup recompute and the retention prune both filter on ts alone.
+  (table) => [index("custom_event_raw_ts_idx").on(table.ts)],
+);
+
 /** Read path. All rollups are recompute-and-overwrite, never incremented. */
 export const rollupHourly = pgTable(
   "rollup_hourly",
@@ -148,6 +166,21 @@ export const rollupDeviceDaily = pgTable(
     visitors: integer("visitors").notNull(),
   },
   (table) => [primaryKey({ columns: [table.siteId, table.day, table.device] })],
+);
+
+/** Per-day count of each named custom event. `count` is a plain occurrence
+ * count (custom events are counts-only; there is no distinct-visitor figure). */
+export const rollupCustomEventDaily = pgTable(
+  "rollup_custom_event_daily",
+  {
+    siteId: integer("site_id")
+      .notNull()
+      .references(() => site.id, { onDelete: "cascade" }),
+    day: date("day").notNull(),
+    name: text("name").notNull(),
+    count: integer("count").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.siteId, table.day, table.name] })],
 );
 
 /** Single-row table: every hour bucket ending <= finalized_through is final. */

@@ -10,6 +10,7 @@ import { getDb, getSql } from "@/lib/db/client";
 
 const TABLES = [
   "event_raw",
+  "custom_event_raw",
   "daily_salt",
   "rollup_hourly",
   "rollup_daily",
@@ -17,6 +18,7 @@ const TABLES = [
   "rollup_referrer_daily",
   "rollup_country_daily",
   "rollup_device_daily",
+  "rollup_custom_event_daily",
   "rollup_watermark",
   "site",
 ];
