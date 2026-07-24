@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security or privacy vulnerability
+    url: https://github.com/thealirazadev/pulse-analytics/security/advisories/new
+    about: Report privately. Do not open a public issue for anything touching auth, ingestion, the rollup job, or a privacy invariant.
+  - name: Question or usage help
+    url: https://github.com/thealirazadev/pulse-analytics/discussions
+    about: Ask setup, deployment, and how-to questions in Discussions instead of an issue.
