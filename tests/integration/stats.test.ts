@@ -160,6 +160,52 @@ describe("stats api", () => {
     expect(body.rows[0].key).toBe("desktop");
   });
 
+  it("returns zeros for a site that has no rollups yet", async () => {
+    await getDb()
+      .insert(site)
+      .values({ publicId: "pk_empty001", domain: "empty.com", name: "Empty" });
+
+    const sum = await (
+      await summary(req(`/api/stats/summary?site=pk_empty001&range=today`))
+    ).json();
+    expect(sum).toMatchObject({ pageviews: 0, visitors: 0 });
+
+    const ts = await (
+      await timeseries(req(`/api/stats/timeseries?site=pk_empty001&range=today`))
+    ).json();
+    expect(ts.points.length).toBeGreaterThan(0);
+    expect(
+      ts.points.every(
+        (p: { pageviews: number; visitors: number }) =>
+          p.pageviews === 0 && p.visitors === 0,
+      ),
+    ).toBe(true);
+  });
+
+  it("zero-fills days with no rollup inside a multi-day range", async () => {
+    const res = await timeseries(
+      req(`/api/stats/timeseries?site=${SID}&range=7d`),
+    );
+    const body = await res.json();
+    expect(body.points).toHaveLength(7);
+    // Only today and yesterday were seeded; the six-days-ago boundary is a gap.
+    const oldest = body.points[0];
+    expect(oldest).toMatchObject({ pageviews: 0, visitors: 0 });
+    expect(oldest.bucket).not.toBe(todayStr);
+    expect(oldest.bucket).not.toBe(yesterdayStr);
+  });
+
+  it("rejects an out-of-range limit with 400", async () => {
+    for (const limit of ["0", "51", "-1", "abc"]) {
+      const res = await breakdown(
+        req(
+          `/api/stats/breakdown?site=${SID}&range=today&dimension=page&limit=${limit}`,
+        ),
+      );
+      expect(res.status).toBe(400);
+    }
+  });
+
   it("validates params and auth", async () => {
     expect(
       (await summary(req(`/api/stats/summary?site=${SID}&range=bad`))).status,
