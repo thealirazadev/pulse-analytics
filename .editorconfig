@@ -1,0 +1,20 @@
+# EditorConfig — https://editorconfig.org
+# Matches the Prettier config (.prettierrc): 2-space indent, 80-column width.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 2
+insert_final_newline = true
+trim_trailing_whitespace = true
+max_line_length = 80
+
+# Markdown uses two trailing spaces for hard line breaks; keep them.
+[*.md]
+trim_trailing_whitespace = false
+
+# Generated migration SQL and lockfile are not hand-formatted.
+[{package-lock.json,drizzle/**}]
+max_line_length = off
