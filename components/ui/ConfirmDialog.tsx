@@ -9,6 +9,8 @@ interface ConfirmDialogProps {
   description: string;
   confirmLabel?: string;
   loading?: boolean;
+  /** Inline error shown inside the dialog when the confirmed action fails. */
+  error?: string | null;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -25,6 +27,7 @@ export function ConfirmDialog({
   description,
   confirmLabel = "Delete",
   loading,
+  error,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -93,6 +96,11 @@ export function ConfirmDialog({
         <p id={descId} className="mt-2 text-fg-muted">
           {description}
         </p>
+        {error && (
+          <p role="alert" className="mt-3 text-sm text-danger">
+            {error}
+          </p>
+        )}
         <div className="mt-6 flex justify-end gap-3">
           <Button ref={cancelRef} variant="secondary" onClick={onCancel}>
             Cancel
