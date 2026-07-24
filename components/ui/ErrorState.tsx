@@ -11,7 +11,11 @@ export function ErrorState({
 }: ErrorStateProps) {
   return (
     <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
-      <p className="text-sm text-fg-muted">{message}</p>
+      {/* role=alert so a panel that fails to load is announced, not a silent
+          visual swap from the loading skeleton. */}
+      <p role="alert" className="text-sm text-fg-muted">
+        {message}
+      </p>
       <Button variant="secondary" onClick={onRetry}>
         Retry
       </Button>
