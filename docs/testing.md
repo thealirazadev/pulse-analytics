@@ -1,10 +1,10 @@
 # Testing: pulse-analytics
 
-Build and tests must pass before any feature is marked done. The riskiest code is the pipeline — salt lifecycle, hash derivation, ingest validation, and the rollup SQL — so that is where test depth goes. After creating or editing files, run build and tests and fix all errors BEFORE reporting done.
+Build and tests must pass before any feature is marked done. The riskiest code is the pipeline - salt lifecycle, hash derivation, ingest validation, and the rollup SQL - so that is where test depth goes. After creating or editing files, run build and tests and fix all errors BEFORE reporting done.
 
 ## Strategy
 
-### Unit tests — Vitest
+### Unit tests - Vitest
 Pure logic, no network, no database:
 
 - **Privacy:** `visitorHash` determinism, cross-salt divergence, output format; logger rejection of `ip`/`userAgent` fields; log-capture assertion that a mocked full ingest emits no IP/UA anywhere.
@@ -13,7 +13,7 @@ Pure logic, no network, no database:
 - **Auth:** scrypt verify round-trip, session cookie sign/verify/expiry/tamper, login limiter.
 - **Snippet budget:** read `public/p.js`, assert `<= 1536` bytes.
 
-### Integration tests — Vitest against a real Postgres
+### Integration tests - Vitest against a real Postgres
 The rollup SQL and salt lifecycle cannot be meaningfully tested against mocks. These tests run migrations into a disposable database (`TEST_DATABASE_URL`, default `postgres://localhost:5432/pulse_test`), seed raw events with hand-built timestamps, and assert:
 
 - Salt get-or-create is race-safe (two concurrent calls, one row) and destruction leaves only today.
@@ -26,10 +26,10 @@ The rollup SQL and salt lifecycle cannot be meaningfully tested against mocks. T
 
 CI and local runs both require a reachable Postgres; the proposed docker-compose file provides it. Integration tests truncate their tables between cases and never touch the dev database.
 
-### Component tests — Vitest + Testing Library
+### Component tests - Vitest + Testing Library
 Behavior and accessibility, not styling: `StatTile` (value, em-dash empty state, caption), `BreakdownList` (ordering, truncation, empty state), `RangePicker`/`SitePicker` (keyboard operation, selection announced), `SiteForm` (inline validation, error from a mocked `409`), `ConfirmDialog` (focus trap, `Esc`, focus return), `SnippetBlock` (copy announcement). Mock `fetch` for panels; never a live server in component tests.
 
-### End-to-end — Playwright (one smoke test, Phase 6)
+### End-to-end - Playwright (one smoke test, Phase 6)
 Runs against `next build && next start` with a fresh test database and test env vars. Flow: log in -> register a site -> POST beacons via the request API (with a matching `Origin` header) -> POST the rollup route with the test `CRON_SECRET` -> open the dashboard and assert non-zero tile, chart, and breakdown content -> log out. Unhappy-path assertions: bad login shows the generic message; unauthenticated `/dashboard` redirects to `/login`.
 
 ### Manual QA
@@ -82,9 +82,9 @@ Expected `package.json` scripts:
 
 All of the following succeed locally before the feature's commit:
 
-- `npm run lint` — no errors.
-- `npm run build` — succeeds.
-- `npm run test` — all unit, component, and integration tests pass.
-- From Phase 6 on, `npm run test:e2e` — the smoke test passes.
+- `npm run lint` - no errors.
+- `npm run build` - succeeds.
+- `npm run test` - all unit, component, and integration tests pass.
+- From Phase 6 on, `npm run test:e2e` - the smoke test passes.
 
 Never commit a feature leaving any of these red. If a fix fails twice, stop and report per `docs/rules.md`.

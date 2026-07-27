@@ -9,9 +9,9 @@ Describe the change and the problem it solves. Link any related issue
 
 ## Which path does it touch
 
-- [ ] Write path — `/api/collect`
-- [ ] Aggregation job — `/api/jobs/rollup`
-- [ ] Read path — dashboard / `/api/stats/*`
+- [ ] Write path - `/api/collect`
+- [ ] Aggregation job - `/api/jobs/rollup`
+- [ ] Read path - dashboard / `/api/stats/*`
 - [ ] Auth / session
 - [ ] Site management / snippet
 - [ ] Docs / tooling only
@@ -29,7 +29,7 @@ All four run in CI and must be green. I ran them locally:
 
 - [ ] I added or extended tests for the behavior I changed.
 - [ ] A bug fix includes a test that fails before the fix.
-- [ ] N/A — docs or tooling only.
+- [ ] N/A - docs or tooling only.
 
 ## Invariants preserved
 

@@ -17,9 +17,9 @@ A clear description of the bug and what you expected instead.
 
 ## Which path
 
-- [ ] Write path — `/api/collect` (beacon ingestion)
-- [ ] Aggregation job — `/api/jobs/rollup`
-- [ ] Read path — dashboard / `/api/stats/*`
+- [ ] Write path - `/api/collect` (beacon ingestion)
+- [ ] Aggregation job - `/api/jobs/rollup`
+- [ ] Read path - dashboard / `/api/stats/*`
 - [ ] Auth / session
 - [ ] Site management / snippet
 - [ ] Other / not sure

@@ -12,14 +12,14 @@ The system is three decoupled paths. The write path is dumb and cheap, the read 
 4. It then reads the client IP from the connection/forwarded header, looks up the country in a local GeoIP database, computes `visitor_hash = sha256(daily_salt || site_id || ip || ua)` using today's UTC salt, and lets the IP go out of scope. The IP is never stored and never logged.
 5. One row is inserted into `event_raw` (ts, path, referrer host, country, device, visitor hash). Response `202`, no body, no `Set-Cookie`.
 
-Custom events share this path. The snippet also exposes `window.pulse('event', '<name>')`, which sends a `{ sid, n }` beacon to the same `POST /api/collect`. The handler runs the identical guards (steps 1–3 and the origin/DNT/rate-limit/bot checks), and because custom events are counts-only it inserts one `custom_event_raw` row (site, ts, name) with no device, country, IP, or visitor hash — the IP is never even read. Invalid names (`^[A-Za-z0-9._-]{1,64}$`) return `400`; the first accepted event of either kind verifies the site.
+Custom events share this path. The snippet also exposes `window.pulse('event', '<name>')`, which sends a `{ sid, n }` beacon to the same `POST /api/collect`. The handler runs the identical guards (steps 1-3 and the origin/DNT/rate-limit/bot checks), and because custom events are counts-only it inserts one `custom_event_raw` row (site, ts, name) with no device, country, IP, or visitor hash - the IP is never even read. Invalid names (`^[A-Za-z0-9._-]{1,64}$`) return `400`; the first accepted event of either kind verifies the site.
 
 ### Aggregation job (the bridge)
 
 6. A scheduler (system cron, a container cron sidecar, or a platform cron) calls `POST /api/jobs/rollup` every 5 minutes with `Authorization: Bearer $CRON_SECRET`.
 7. The job recomputes every hourly bucket from `rollup_watermark.finalized_through` up to and including the current partial hour, straight from `event_raw`, and upserts the results (overwrite, never increment). It then recomputes the daily tables for every UTC day touched by those hours, including `rollup_custom_event_daily` from `custom_event_raw` and `rollup_goal_daily` (goal completions matched from `event_raw`/`custom_event_raw`), in the same per-day transaction. Recompute-and-overwrite is the idempotency mechanism: running the job twice, or re-covering an hour after a crash, always converges to the same rows.
 8. The watermark advances past an hour only once the hour has been over for a 5-minute grace period. Because the job always processes "watermark to now" rather than "the last hour", missed runs self-heal: the next run backfills the whole gap. The catch-up horizon equals raw retention (72 hours); gaps older than that are permanently lost, which is acceptable (losing events is tolerable, corrupting rollups is not).
-9. Housekeeping in the same run: delete `event_raw` and `custom_event_raw` rows older than 72 hours whose day is finalized, and delete `daily_salt` rows for days before the current UTC day (salt destruction — see data model).
+9. Housekeeping in the same run: delete `event_raw` and `custom_event_raw` rows older than 72 hours whose day is finalized, and delete `daily_salt` rows for days before the current UTC day (salt destruction - see data model).
 
 ### Read path (dashboard)
 
@@ -122,7 +122,7 @@ pulse-analytics/
       job.ts                      Orchestrates recompute, watermark, prune, salt destruction
       sql.ts                      The recompute/upsert statements (hand-written SQL)
     stats/
-      queries.ts                  Rollup reads only — must not import event_raw
+      queries.ts                  Rollup reads only - must not import event_raw
       ranges.ts                   Range preset -> [from, to, interval], UTC; conversion-rate math
     goals/
       validate.ts                 Goal payload validation (reuses ingest validators)
@@ -157,17 +157,17 @@ A `docker-compose.yml` with a local Postgres 16 service is proposed for dev conv
 
 Major versions below; exact versions are pinned at install time and `package-lock.json` is committed (see `docs/rules.md`).
 
-- **Next.js 15 (App Router) + TypeScript 5** — matches the conventions of the other Next.js projects in this portfolio (`woo-headless`). One deployable holds the ingest route, job route, APIs, and dashboard; server components keep DB access and secrets server-side.
-- **PostgreSQL 16** — chosen over SQLite deliberately. Ingestion is write-heavy and concurrent: beacon bursts insert while the rollup job runs multi-statement read/recompute/upsert transactions over the same table. Postgres MVCC handles concurrent writers and the aggregation transaction without a global write lock; SQLite serializes writers (even in WAL mode) and would make the job and ingestion contend. Postgres also gives `timestamptz`, `date_trunc`, and robust `INSERT ... ON CONFLICT DO UPDATE` for the upsert-overwrite pattern. Trade-off: one more service to run; mitigated by the optional docker-compose file. SQLite would be simpler operationally but is the wrong shape for this write pattern.
-- **Drizzle ORM + drizzle-kit (0.4x / 0.3x)** — neither reference project has a database, so this is a fresh choice, made for one reason: the heart of this app is hand-written aggregation SQL (`GROUP BY` over time buckets, `COUNT(DISTINCT visitor_hash)`, `ON CONFLICT DO UPDATE`). Drizzle is SQL-first — the schema is plain TypeScript, migrations are generated SQL files reviewed like code, and raw SQL composes naturally. Prisma's engine layer and generated client add weight and distance from SQL for no benefit here. Proposed dependency, needs approval.
-- **postgres (postgres.js) driver 3.x** — the lightweight driver Drizzle recommends; a single connection pool in `lib/db/client.ts`. Proposed dependency, needs approval.
-- **Tailwind CSS 3.4** — same as the reference projects; tokens from `docs/design.md` live in `tailwind.config.ts`.
-- **uPlot 1.6** — the one chart on the dashboard is a time series, uPlot's exact specialty: canvas-based, ~45 KB, zero dependencies, fast with thousands of points. Breakdown panels use plain HTML/CSS proportional bars and need no library. Recharts/Chart.js were rejected as heavier general-purpose kits for a single chart type. Proposed dependency, needs approval.
-- **maxmind 5.x + a local GeoLite2-Country database** — country resolution must be offline; sending visitor IPs to a geo API would break the privacy design. The `maxmind` package reads a local `.mmdb` file given by `GEOIP_DB_PATH`. The database file is not committed; if the path is unset or missing, country is null and everything else works. Proposed dependency, needs approval.
-- **node:crypto for auth and hashing — no auth library.** scrypt for the admin password hash, HMAC-SHA-256 for the signed session cookie, SHA-256 for visitor hashes, `randomBytes` for salts. One admin with env credentials does not justify NextAuth or a session-store dependency.
-- **Hand-rolled validation** — the beacon payload has three short fields and the stats API has three enum-ish params. A schema library (zod) is not warranted; `lib/ingest/validate.ts` and `lib/stats/ranges.ts` validate by hand with unit tests.
-- **Cron hitting a protected route** (vs a standalone Node script) — chosen because it keeps one deployable and one env/DB/logger setup, and works with any scheduler that can run `curl` (system cron, container cron, platform cron). A standalone script would duplicate env validation and DB bootstrapping. Trade-off documented: the job runs inside the web process; the recompute is bounded (72 h of raw data max) so this is acceptable at self-hosted scale. Route timeout risk on huge backfills is handled by the job capping work per invocation (process at most 78 hourly buckets per call; the next call continues).
-- **Vitest + Testing Library + Playwright, ESLint + Prettier** — same tooling as the reference projects. Integration tests for the SQL run against a real disposable Postgres (see `docs/testing.md`).
+- **Next.js 15 (App Router) + TypeScript 5** - matches the conventions of the other Next.js projects in this portfolio (`woo-headless`). One deployable holds the ingest route, job route, APIs, and dashboard; server components keep DB access and secrets server-side.
+- **PostgreSQL 16** - chosen over SQLite deliberately. Ingestion is write-heavy and concurrent: beacon bursts insert while the rollup job runs multi-statement read/recompute/upsert transactions over the same table. Postgres MVCC handles concurrent writers and the aggregation transaction without a global write lock; SQLite serializes writers (even in WAL mode) and would make the job and ingestion contend. Postgres also gives `timestamptz`, `date_trunc`, and robust `INSERT ... ON CONFLICT DO UPDATE` for the upsert-overwrite pattern. Trade-off: one more service to run; mitigated by the optional docker-compose file. SQLite would be simpler operationally but is the wrong shape for this write pattern.
+- **Drizzle ORM + drizzle-kit (0.4x / 0.3x)** - neither reference project has a database, so this is a fresh choice, made for one reason: the heart of this app is hand-written aggregation SQL (`GROUP BY` over time buckets, `COUNT(DISTINCT visitor_hash)`, `ON CONFLICT DO UPDATE`). Drizzle is SQL-first - the schema is plain TypeScript, migrations are generated SQL files reviewed like code, and raw SQL composes naturally. Prisma's engine layer and generated client add weight and distance from SQL for no benefit here. Proposed dependency, needs approval.
+- **postgres (postgres.js) driver 3.x** - the lightweight driver Drizzle recommends; a single connection pool in `lib/db/client.ts`. Proposed dependency, needs approval.
+- **Tailwind CSS 3.4** - same as the reference projects; tokens from `docs/design.md` live in `tailwind.config.ts`.
+- **uPlot 1.6** - the one chart on the dashboard is a time series, uPlot's exact specialty: canvas-based, ~45 KB, zero dependencies, fast with thousands of points. Breakdown panels use plain HTML/CSS proportional bars and need no library. Recharts/Chart.js were rejected as heavier general-purpose kits for a single chart type. Proposed dependency, needs approval.
+- **maxmind 5.x + a local GeoLite2-Country database** - country resolution must be offline; sending visitor IPs to a geo API would break the privacy design. The `maxmind` package reads a local `.mmdb` file given by `GEOIP_DB_PATH`. The database file is not committed; if the path is unset or missing, country is null and everything else works. Proposed dependency, needs approval.
+- **node:crypto for auth and hashing - no auth library.** scrypt for the admin password hash, HMAC-SHA-256 for the signed session cookie, SHA-256 for visitor hashes, `randomBytes` for salts. One admin with env credentials does not justify NextAuth or a session-store dependency.
+- **Hand-rolled validation** - the beacon payload has three short fields and the stats API has three enum-ish params. A schema library (zod) is not warranted; `lib/ingest/validate.ts` and `lib/stats/ranges.ts` validate by hand with unit tests.
+- **Cron hitting a protected route** (vs a standalone Node script) - chosen because it keeps one deployable and one env/DB/logger setup, and works with any scheduler that can run `curl` (system cron, container cron, platform cron). A standalone script would duplicate env validation and DB bootstrapping. Trade-off documented: the job runs inside the web process; the recompute is bounded (72 h of raw data max) so this is acceptable at self-hosted scale. Route timeout risk on huge backfills is handled by the job capping work per invocation (process at most 78 hourly buckets per call; the next call continues).
+- **Vitest + Testing Library + Playwright, ESLint + Prettier** - same tooling as the reference projects. Integration tests for the SQL run against a real disposable Postgres (see `docs/testing.md`).
 
 ## Data model
 
@@ -220,7 +220,7 @@ daily_salt (
 )
 ```
 
-Created lazily by the first event of the day: `INSERT ... ON CONFLICT (day) DO NOTHING` then select — race-safe under concurrent beacons. **Destruction is the privacy guarantee:** the housekeeping step deletes every row with `day < current UTC day`. Recomputing past rollups never needs the salt (hashes are already materialized on raw rows), so once a day ends its salt has no legitimate use and is destroyed. After destruction, no party — operator included — can recompute or verify a past day's hash, which is what makes cross-day linkage impossible.
+Created lazily by the first event of the day: `INSERT ... ON CONFLICT (day) DO NOTHING` then select - race-safe under concurrent beacons. **Destruction is the privacy guarantee:** the housekeeping step deletes every row with `day < current UTC day`. Recomputing past rollups never needs the salt (hashes are already materialized on raw rows), so once a day ends its salt has no legitimate use and is destroyed. After destruction, no party - operator included - can recompute or verify a past day's hash, which is what makes cross-day linkage impossible.
 
 ### event_raw (write path; 72-hour retention)
 
@@ -256,7 +256,7 @@ custom_event_raw (
 CREATE INDEX custom_event_raw_ts_idx ON custom_event_raw (ts);
 ```
 
-Named custom events are **counts only, with no properties** — the deliberate v1
+Named custom events are **counts only, with no properties** - the deliberate v1
 scope. A row therefore carries no device, country, IP, or visitor hash: nothing
 beyond which named event happened, at what UTC instant, for which site. The
 snippet reports one through the `pulse('event', '<name>')` API (see below); the
@@ -264,9 +264,9 @@ collect handler applies the identical guards it uses for pageviews (size, shape,
 site/origin, DNT/GPC, rate limit, bot drop) and never reads the IP. Pruned by
 the job after 72 hours, like `event_raw`.
 
-### Rollup tables (read path — dashboards read only these)
+### Rollup tables (read path - dashboards read only these)
 
-All rollups are written with `INSERT ... ON CONFLICT (pk) DO UPDATE SET` using freshly recomputed values — overwrite, never increment.
+All rollups are written with `INSERT ... ON CONFLICT (pk) DO UPDATE SET` using freshly recomputed values - overwrite, never increment.
 
 ```
 rollup_hourly (
@@ -368,16 +368,16 @@ Job algorithm per run: recompute all hourly buckets in `(finalized_through, now]
 
 ## Where state lives
 
-- **Postgres** — everything durable: sites, salts (today's only), raw events (72 h), rollups, watermark.
-- **Server memory (per process)** — the ingest rate-limit buckets and login-attempt counters. Accepted trade-off for a single-instance self-hosted app: a restart resets limiters (harmless), and multi-instance deployments would need a shared store (out of scope, noted here deliberately).
-- **Client (browser of the admin)** — the session cookie (signed, HttpOnly, no server-side session table; the cookie itself is the session) and the theme preference in `localStorage`. Dashboard panel state (selected site, range) lives in the URL (`/dashboard/[siteId]?range=7d`) so views are bookmarkable.
-- **Visitor browsers** — nothing. No cookie, no storage. This line is the product.
+- **Postgres** - everything durable: sites, salts (today's only), raw events (72 h), rollups, watermark.
+- **Server memory (per process)** - the ingest rate-limit buckets and login-attempt counters. Accepted trade-off for a single-instance self-hosted app: a restart resets limiters (harmless), and multi-instance deployments would need a shared store (out of scope, noted here deliberately).
+- **Client (browser of the admin)** - the session cookie (signed, HttpOnly, no server-side session table; the cookie itself is the session) and the theme preference in `localStorage`. Dashboard panel state (selected site, range) lives in the URL (`/dashboard/[siteId]?range=7d`) so views are bookmarkable.
+- **Visitor browsers** - nothing. No cookie, no storage. This line is the product.
 
 ## External dependencies
 
 - PostgreSQL 16 reachable via `DATABASE_URL`.
 - A scheduler that can `curl` the rollup route every 5 minutes (system cron, container cron, or platform cron).
-- Optional: a MaxMind GeoLite2-Country `.mmdb` file on disk (free license from MaxMind; the operator downloads it — never committed). Without it, countries are "Unknown".
+- Optional: a MaxMind GeoLite2-Country `.mmdb` file on disk (free license from MaxMind; the operator downloads it - never committed). Without it, countries are "Unknown".
 - Proposed npm dependencies (all need approval before install): `drizzle-orm`, `drizzle-kit`, `postgres`, `uplot`, `maxmind`. Everything else uses Node built-ins or the standard Next/Tailwind/test toolchain.
 
 ### Required environment variables

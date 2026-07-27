@@ -2,13 +2,13 @@
 
 Phase N+1 does not start until the owner approves phase N. Each phase is the smallest useful chunk that ships and is testable on its own. One commit per feature/task, in the listed order, Conventional Commits. Build and tests must pass before a feature is done (see `docs/testing.md`).
 
-The three senior differentiators — write/read path separation with a scheduled idempotent aggregation job, privacy engineering as testable spec, and ingestion resilience — are hard requirements of Phases 1 and 2. They are not stretch goals and cannot slip.
+The three senior differentiators - write/read path separation with a scheduled idempotent aggregation job, privacy engineering as testable spec, and ingestion resilience - are hard requirements of Phases 1 and 2. They are not stretch goals and cannot slip.
 
 ---
 
-## Phase 1 — Scaffold, schema, and privacy primitives
+## Phase 1 - Scaffold, schema, and privacy primitives
 
-Goal: a running Next.js app connected to Postgres with the complete schema migrated (raw, rollups, salt, watermark — the write/read separation exists in the schema from day one), plus the tested privacy primitives (salt lifecycle, visitor hash) that everything else builds on.
+Goal: a running Next.js app connected to Postgres with the complete schema migrated (raw, rollups, salt, watermark - the write/read separation exists in the schema from day one), plus the tested privacy primitives (salt lifecycle, visitor hash) that everything else builds on.
 
 ### Definition of done
 - Next.js (App Router) + TypeScript + Tailwind boots with `npm run dev`; ESLint + Prettier pass; Vitest runs.
@@ -38,7 +38,7 @@ Goal: a running Next.js app connected to Postgres with the complete schema migra
 
 ---
 
-## Phase 2 — Data pipeline: ingestion and rollups
+## Phase 2 - Data pipeline: ingestion and rollups
 
 Goal: the complete pipeline works end to end from a curl'd beacon to correct rollup rows. All three differentiators land here: resilient ingestion (validation, origin check, rate limiting, graceful bad-input handling), the privacy engine live on the write path (geo then IP discard, salted hash, DNT), and the idempotent catch-up-safe aggregation job bridging write and read paths.
 
@@ -46,7 +46,7 @@ Goal: the complete pipeline works end to end from a curl'd beacon to correct rol
 - `POST /api/collect` implements the full contract in `docs/api-contracts.md`: 1 KB body cap (`413`), hand-rolled payload validation (`400`), site lookup + `Origin`/`Referer` host check (`403`), `DNT`/`Sec-GPC` header drop (`202`, nothing stored), bot UA drop (`202`, nothing stored), per-site token bucket (`429`), then device classification, optional GeoIP country, visitor hash, single `event_raw` insert, `202` with no body and no `Set-Cookie`.
 - Path normalization strips query strings and fragments server-side regardless of what the client sent; referrer is reduced to an external hostname or null.
 - `lib/ingest/device.ts` classifies desktop/mobile/tablet/unknown and detects common bots with a small in-house regex set (no UA-parser dependency); unit tested against a fixture list.
-- `lib/ingest/geo.ts` reads the mmdb at `GEOIP_DB_PATH` once at startup; missing/corrupt file logs one warning and yields null countries — never a crash.
+- `lib/ingest/geo.ts` reads the mmdb at `GEOIP_DB_PATH` once at startup; missing/corrupt file logs one warning and yields null countries - never a crash.
 - A log-capture test proves a full ingest writes no IP and no raw UA to logs or DB.
 - `POST /api/jobs/rollup` implements the job: bearer auth, advisory lock (second concurrent call gets `409`), recompute all hourly buckets from the watermark through the current partial hour, recompute daily tables (including exact `COUNT(DISTINCT visitor_hash)` per day) for touched days, upsert-overwrite only, advance watermark past hours older than the 5-minute grace, prune raw > 72 h on finalized days, destroy expired salts, cap 78 buckets per invocation, return the run-summary JSON.
 - Integration tests (real Postgres) prove: running the job twice yields byte-identical rollups; a simulated multi-hour gap backfills correctly; a replayed raw set never changes recompute results; pruning does not alter rollups; sentinel mapping (`''` direct, `'ZZ'` unknown) is applied.
@@ -73,7 +73,7 @@ Goal: the complete pipeline works end to end from a curl'd beacon to correct rol
 
 ---
 
-## Phase 3 — Admin auth
+## Phase 3 - Admin auth
 
 Goal: the single-admin login/session layer that will guard everything the dashboard does.
 
@@ -98,7 +98,7 @@ Goal: the single-admin login/session layer that will guard everything the dashbo
 
 ---
 
-## Phase 4 — Site management and tracking snippet
+## Phase 4 - Site management and tracking snippet
 
 Goal: the owner can register a site in the UI, copy a working snippet, install it, and watch the site flip to verified on the first pageview.
 
@@ -127,9 +127,9 @@ Goal: the owner can register a site in the UI, copy a working snippet, install i
 
 ---
 
-## Phase 5 — Dashboard
+## Phase 5 - Dashboard
 
-Goal: the full read path — stats API over rollups and the dashboard UI with site/range pickers, tiles, chart, and breakdowns.
+Goal: the full read path - stats API over rollups and the dashboard UI with site/range pickers, tiles, chart, and breakdowns.
 
 ### Definition of done
 - `/api/stats/summary`, `/api/stats/timeseries`, `/api/stats/breakdown` per the contract; params validated via `lib/stats/ranges.ts`; zero-filled buckets; sentinels mapped to display labels; a test asserts `lib/stats/queries.ts` never references `event_raw`.
@@ -156,9 +156,9 @@ Goal: the full read path — stats API over rollups and the dashboard UI with si
 
 ---
 
-## Phase 6 — Theming, polish, and e2e
+## Phase 6 - Theming, polish, and e2e
 
-Goal: production feel — themes, accessibility pass, error pages, and an automated end-to-end smoke of the whole loop.
+Goal: production feel - themes, accessibility pass, error pages, and an automated end-to-end smoke of the whole loop.
 
 ### Definition of done
 - Light/dark theme (system preference on first load, toggle persisted to `pulse-theme`, no flash); both themes meet the contrast targets in `docs/design.md`; chart colors switch with the theme.
@@ -180,21 +180,21 @@ Goal: production feel — themes, accessibility pass, error pages, and an automa
 
 ---
 
-## Phase 7 — Custom events (promoted from Backlog)
+## Phase 7 - Custom events (promoted from Backlog)
 
-Goal: named custom events with counts only (no properties). A tracked page can report a named event (e.g. a signup) through a tiny snippet API; ingestion validates and stores it on a dedicated raw table; the aggregation job rolls it up per (site, name, UTC day) with the same recompute-and-overwrite idempotency as pageviews; the dashboard shows a top-events panel that reads the rollup only. Arbitrary event properties stay out of scope — that remains a non-goal.
+Goal: named custom events with counts only (no properties). A tracked page can report a named event (e.g. a signup) through a tiny snippet API; ingestion validates and stores it on a dedicated raw table; the aggregation job rolls it up per (site, name, UTC day) with the same recompute-and-overwrite idempotency as pageviews; the dashboard shows a top-events panel that reads the rollup only. Arbitrary event properties stay out of scope - that remains a non-goal.
 
 The write/read split, UTC-pinned aggregation, and privacy model are unchanged and non-negotiable: ingestion writes raw, dashboards read rollups only, and no IP is ever stored. Counts-only means custom events need no visitor hash at all.
 
 ### Definition of done
 - The snippet exposes a documented `window.pulse('event', '<name>')` API that sends a `{ sid, n }` beacon over the same `sendBeacon`/`fetch keepalive` path; DNT/GPC, a missing `data-site`, or a missing script tag make it a safe no-op (it never throws into the host page); the file stays within its byte budget (or the budget is adjusted in the test and README with written justification).
-- `POST /api/collect` accepts the custom-event beacon: validates the event name (1–64 chars, `[A-Za-z0-9._-]` allowlist), enforces the same origin check, DNT/GPC drop, per-site rate limit, and bot drop as pageviews, stores no IP and no visitor hash (counts only), and inserts exactly one `custom_event_raw` row. The first accepted event still verifies the site. Bad names return `400 invalid_payload` and store nothing.
+- `POST /api/collect` accepts the custom-event beacon: validates the event name (1-64 chars, `[A-Za-z0-9._-]` allowlist), enforces the same origin check, DNT/GPC drop, per-site rate limit, and bot drop as pageviews, stores no IP and no visitor hash (counts only), and inserts exactly one `custom_event_raw` row. The first accepted event still verifies the site. Bad names return `400 invalid_payload` and store nothing.
 - New tables via a forward migration: `custom_event_raw` (id, site_id, ts, name; ts index; 72-hour retention) and `rollup_custom_event_daily` (site_id, day, name, count; PK (site_id, day, name)).
 - The rollup job recomputes `rollup_custom_event_daily` for every touched UTC day inside the same watermark-driven, UTC-pinned, recompute-and-overwrite pass, using `date_trunc(..., 'UTC')`-consistent explicit `timestamptz` day bounds; it prunes `custom_event_raw` past 72 hours. Running the job twice yields identical counts.
 - `GET /api/stats/events?site=&range=&limit=` reads `rollup_custom_event_daily` only and returns top events by count for the range; a static test asserts the query references no raw table.
 - The dashboard shows a "Custom events" panel (name + count, proportional bars) for the selected site and range, reading the rollup endpoint only, with the same skeleton/empty/error states as the other panels.
 
-### Definition of done — tests
+### Definition of done - tests
 - Unit: event-name validation (good names, over-length, bad charset, non-string, empty); the snippet stays under budget and defines a safe no-op under DNT.
 - Integration: a custom-event beacon stores exactly one row and no IP/hash; DNT/GPC and rate-limit drops store nothing; a bot UA is dropped; the job rolls up correct per-name counts and is byte-identical across two runs; pruning removes old custom raw without altering rollups.
 - Static: the custom-events read layer references no raw table (mirrors the existing `event_raw` guard).
@@ -328,10 +328,10 @@ day, summed" caption. `visitors = 0` yields a rate of 0.
   - [ ] Duplicate submissions (double-click a form, replay a beacon, re-run the job): no corruption, no double-counting in rollups.
   - [ ] Refresh mid-action (mid-login, mid-delete, dashboard mid-load): consistent state after reload.
   - [ ] Empty states for zero sites, zero events, empty breakdowns.
-  - [ ] Long inputs: a 512-char path, a long site name, a long referrer — stored/rendered without breaking layout.
+  - [ ] Long inputs: a 512-char path, a long site name, a long referrer - stored/rendered without breaking layout.
 - [ ] Privacy spot-check each phase from Phase 2 on: no IP or raw UA in any log line or table; `daily_salt` holds only today after a job run.
 - [ ] `docs/memory.md` updated with what shipped and any non-obvious decision with its reason.
 
 ## Backlog
 
-- _(empty — "Custom events (named events with counts, no properties)" was promoted to Phase 7 on 2026-07-23 and implemented.)_
+- _(empty - "Custom events (named events with counts, no properties)" was promoted to Phase 7 on 2026-07-23 and implemented.)_

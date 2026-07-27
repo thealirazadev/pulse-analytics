@@ -10,7 +10,7 @@ By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 - Node.js 20+ (developed on Node 24).
 - Docker, for a local PostgreSQL 16.
-- A security issue is **not** a contribution — report it privately per
+- A security issue is **not** a contribution - report it privately per
   [SECURITY.md](SECURITY.md) instead of opening a PR or issue.
 
 ## Local setup
@@ -64,7 +64,7 @@ npm run build          # next build
 ```
 
 The Playwright end-to-end smoke (`npm run test:e2e`) is intentionally not part
-of CI — it needs a browser download and a running production server. Run it
+of CI - it needs a browser download and a running production server. Run it
 locally when you touch the login → sites → dashboard flow.
 
 ## Database changes
@@ -74,7 +74,7 @@ never edited afterward.
 
 1. Edit `lib/db/schema.ts`.
 2. Generate the SQL: `npm run db:generate`.
-3. Review the generated file under `drizzle/` — it is reviewed like code.
+3. Review the generated file under `drizzle/` - it is reviewed like code.
 4. Apply it: `npm run db:migrate`.
 
 Commit the schema change, the generated migration, and its `drizzle/meta`
@@ -87,10 +87,10 @@ core of the design:
 
 - the **write path** (`/api/collect`) only inserts raw events;
 - the scheduled **aggregation job** (`/api/jobs/rollup`) recomputes and
-  overwrites the rollup tables — it never increments, so it is idempotent and
+  overwrites the rollup tables - it never increments, so it is idempotent and
   catch-up safe;
 - the **read path** (the dashboard and every `/api/stats/*` endpoint) queries
-  **only** the rollup tables — never `event_raw` or `custom_event_raw`.
+  **only** the rollup tables - never `event_raw` or `custom_event_raw`.
 
 A dashboard or stats query that touches a raw table is a regression, not a
 feature. This is enforced, not just documented: `tests/unit/statsRollupOnly.test.ts`
@@ -116,7 +116,7 @@ Two more properties are treated the same way and must not regress:
 - Add or extend tests for any behavior you change; a bug fix should come with a
   test that fails before it.
 - Pin exact dependency versions and commit `package-lock.json`. Do not add a new
-  runtime dependency without discussing it first in an issue — the project
+  runtime dependency without discussing it first in an issue - the project
   deliberately leans on `node:crypto` and hand-rolled validators instead of
   libraries.
 - Fill in the pull request template; confirm typecheck, lint, test, and build

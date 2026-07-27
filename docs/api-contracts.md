@@ -2,9 +2,9 @@
 
 This contract is agreed before any frontend or backend code is written. All routes live under the app's own origin (`APP_URL`). Three auth models exist and never mix:
 
-- **Origin-checked, public** — `/api/collect`. No cookie, no token; validated against the registered site's domain.
-- **Session cookie** — everything the dashboard uses (`/api/auth/logout`, `/api/sites*`, `/api/stats/*`). Signed HttpOnly cookie `pulse_session`; unauthenticated requests get `401`.
-- **Bearer secret** — `/api/jobs/rollup` requires `Authorization: Bearer $CRON_SECRET`.
+- **Origin-checked, public** - `/api/collect`. No cookie, no token; validated against the registered site's domain.
+- **Session cookie** - everything the dashboard uses (`/api/auth/logout`, `/api/sites*`, `/api/stats/*`). Signed HttpOnly cookie `pulse_session`; unauthenticated requests get `401`.
+- **Bearer secret** - `/api/jobs/rollup` requires `Authorization: Bearer $CRON_SECRET`.
 
 ## Error response format (used everywhere)
 
@@ -22,7 +22,7 @@ Every non-2xx response body is exactly:
 
 ### POST /api/collect
 
-Public, origin-checked. Called by the snippet via `sendBeacon`/`fetch keepalive`. The body is JSON sent with `Content-Type: text/plain` (a CORS "simple request" — no preflight; the handler parses the text as JSON regardless of content type). Body limit: 1024 bytes.
+Public, origin-checked. Called by the snippet via `sendBeacon`/`fetch keepalive`. The body is JSON sent with `Content-Type: text/plain` (a CORS "simple request" - no preflight; the handler parses the text as JSON regardless of content type). Body limit: 1024 bytes.
 
 Request body:
 
@@ -36,7 +36,7 @@ Request body:
 | `p` | yes | Path beginning with `/`, max 512 chars after server-side stripping of query string and fragment |
 | `r` | no | Referrer URL; server keeps the hostname only, drops it if it equals the site's own domain, null if unparsable |
 
-**Custom event beacon.** A named custom event is the same endpoint with a different body — `{ "sid": "pk_x8f2ab31", "n": "signup" }`, where `n` replaces `p`/`r`. `n` must match `^[A-Za-z0-9._-]{1,64}$` (counts only, no properties). Every guard (origin, DNT/GPC drop, per-site rate limit, bot drop) and every response in the table below is identical to a pageview; a bad `n` returns `400 invalid_payload`. The accepted row is written to `custom_event_raw` with no device, country, IP, or visitor hash — the IP is never read for custom events. Emitted from the snippet with `pulse('event', 'signup')`.
+**Custom event beacon.** A named custom event is the same endpoint with a different body - `{ "sid": "pk_x8f2ab31", "n": "signup" }`, where `n` replaces `p`/`r`. `n` must match `^[A-Za-z0-9._-]{1,64}$` (counts only, no properties). Every guard (origin, DNT/GPC drop, per-site rate limit, bot drop) and every response in the table below is identical to a pageview; a bad `n` returns `400 invalid_payload`. The accepted row is written to `custom_event_raw` with no device, country, IP, or visitor hash - the IP is never read for custom events. Emitted from the snippet with `pulse('event', 'signup')`.
 
 Server-derived (never sent by the client): timestamp, device class (from the `User-Agent` header), country (local GeoIP on the connection IP), visitor hash. The IP is discarded after derivation.
 
@@ -49,7 +49,7 @@ Responses (success responses have no body and never set cookies):
 | `400` `invalid_payload` | Malformed JSON, missing/invalid fields | no |
 | `403` `unknown_site` / `origin_mismatch` | `sid` not registered, or `Origin`/`Referer` host does not match the site's domain | no |
 | `413` `payload_too_large` | Body over 1024 bytes | no |
-| `429` `rate_limited` | Per-site token bucket exhausted (sustained 10 req/s, burst 50 — constants in code) | no |
+| `429` `rate_limited` | Per-site token bucket exhausted (sustained 10 req/s, burst 50 - constants in code) | no |
 
 Replay note: a byte-identical replayed beacon re-derives the hash from the *replaying* connection's IP/UA at receipt time, so third-party replays look like different visitors and same-source replays are indistinguishable from real repeat pageviews. No event-level dedup is attempted; the rate limit bounds inflation of raw counts, and rollup integrity is unaffected (aggregation recomputes deterministically from whatever raw rows exist).
 
@@ -65,8 +65,8 @@ Public, rate-limited (5 attempts/min per source; the limiter key is held in memo
 { "email": "admin@example.com", "password": "correct horse battery staple" }
 ```
 
-- `204` — credentials match `ADMIN_EMAIL` + `ADMIN_PASSWORD_HASH` (scrypt). Sets `pulse_session`: HttpOnly, SameSite=Lax, Path=/, Secure in production, HMAC-signed payload `{ sub, exp }`, 7-day expiry.
-- `401` `invalid_credentials` — either field wrong (response does not say which).
+- `204` - credentials match `ADMIN_EMAIL` + `ADMIN_PASSWORD_HASH` (scrypt). Sets `pulse_session`: HttpOnly, SameSite=Lax, Path=/, Secure in production, HMAC-signed payload `{ sub, exp }`, 7-day expiry.
+- `401` `invalid_credentials` - either field wrong (response does not say which).
 - `429` `rate_limited`.
 
 ### POST /api/auth/logout
@@ -95,17 +95,17 @@ All require the session cookie (`401` otherwise). Sites are addressed by `public
 ```
 
 - Domain is lowercased and must be a bare hostname (no scheme/port/path); `name` non-empty, max 80 chars.
-- `201` — the site object (same shape as above).
-- `400` `invalid_payload` — bad domain or name.
-- `409` `conflict` — domain already registered.
+- `201` - the site object (same shape as above).
+- `400` `invalid_payload` - bad domain or name.
+- `409` `conflict` - domain already registered.
 
 ### GET /api/sites/{id}
 
-`200` — the site object. Used by the UI to poll `verifiedAt` ("waiting for first pageview" flips when ingestion sets it). `404` `not_found` for an unknown id.
+`200` - the site object. Used by the UI to poll `verifiedAt` ("waiting for first pageview" flips when ingestion sets it). `404` `not_found` for an unknown id.
 
 ### DELETE /api/sites/{id}
 
-`204` — deletes the site; events and rollups go with it via `ON DELETE CASCADE`. `404` `not_found` otherwise. The UI confirms before calling.
+`204` - deletes the site; events and rollups go with it via `ON DELETE CASCADE`. `404` `not_found` otherwise. The UI confirms before calling.
 
 ---
 
@@ -157,7 +157,7 @@ Session cookie required. Common query params, validated in `lib/stats/ranges.ts`
 | `site` | site public ID | `404` `not_found` if unknown |
 | `range` | `today` \| `7d` \| `30d` \| `90d` | `today` = current UTC day, hourly interval; others = last N UTC days including today, daily interval. Anything else: `400` `invalid_range` |
 
-All stats read rollup tables only — never `event_raw`.
+All stats read rollup tables only - never `event_raw`.
 
 ### GET /api/stats/summary?site=pk_x8f2ab31&range=7d
 
@@ -187,7 +187,7 @@ Buckets with no data are included with zeros so charts render continuous axes. `
 | Param | Values |
 | --- | --- |
 | `dimension` | `page` \| `referrer` \| `country` \| `device` |
-| `limit` | 1–50, default 10 |
+| `limit` | 1-50, default 10 |
 
 `200`:
 
@@ -203,7 +203,7 @@ Rows are ordered by pageviews desc. Sentinels are translated before the response
 
 | Param | Values |
 | --- | --- |
-| `limit` | 1–50, default 10 |
+| `limit` | 1-50, default 10 |
 
 `200`:
 
@@ -240,7 +240,7 @@ a raw table). `400` `invalid_range` for a bad range; `404` `not_found` for an un
 
 ### POST /api/jobs/rollup
 
-`Authorization: Bearer $CRON_SECRET`. Intended caller: cron via curl, every 5 minutes. Safe to call at any frequency — the job is idempotent (recompute-and-overwrite) and self-limiting (max 78 hourly buckets per invocation; call again to continue a large backfill).
+`Authorization: Bearer $CRON_SECRET`. Intended caller: cron via curl, every 5 minutes. Safe to call at any frequency - the job is idempotent (recompute-and-overwrite) and self-limiting (max 78 hourly buckets per invocation; call again to continue a large backfill).
 
 - `200`:
 
@@ -251,7 +251,7 @@ a raw table). `400` `invalid_range` for a bad range; `404` `not_found` for an un
 
 `rawPruned` is the total rows removed from both raw tables (`event_raw` and `custom_event_raw`), which share the 72-hour retention window. `daysRecomputed` covers the pageview, custom-event, and goal daily rollups together (they share each day's transaction). Goals add no new raw table and no new prune step.
 
-- `401` `unauthorized` — missing/wrong bearer token.
-- `409` `conflict` — a previous run is still in progress (advisory lock held); the caller just waits for the next tick.
+- `401` `unauthorized` - missing/wrong bearer token.
+- `409` `conflict` - a previous run is still in progress (advisory lock held); the caller just waits for the next tick.
 
 Any other method on any route above returns `405` with the standard error body.

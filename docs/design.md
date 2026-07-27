@@ -48,7 +48,7 @@ Chart rules (binding):
 
 - One y-axis, always zero-based for counts. Never a dual-axis chart.
 - Lines 2 px; area fill for a single series only, at low opacity of its own hue. Points appear only on hover (crosshair), >= 8 px hit markers.
-- Legend present when both series are shown (small color chip + label above the chart); a single-series chart needs no legend — the panel title names it.
+- Legend present when both series are shown (small color chip + label above the chart); a single-series chart needs no legend - the panel title names it.
 - Text in charts wears text tokens, never series colors. Values, tick labels, and legend text use `fg`/`fg-muted`/`fg-faint`; the colored chip carries identity.
 - Breakdown bars encode magnitude, not identity: every bar in a panel is `series-1` at one step. No rainbow lists.
 - Crosshair + tooltip on the time series (bucket label, both values, matching chip colors); per-row hover on breakdowns. Tooltip: `surface` background, `border` hairline, shadow `md`.
@@ -69,7 +69,7 @@ System sans everywhere, including the big numbers: `ui-sans-serif, system-ui, -a
 
 ## Spacing, radius, shadow
 
-- Spacing on the 4/8 px system: Tailwind steps 1(4), 2(8), 3(12), 4(16), 6(24), 8(32). Card padding 16–24 px; grid gap 16 px; section gaps 24–32 px.
+- Spacing on the 4/8 px system: Tailwind steps 1(4), 2(8), 3(12), 4(16), 6(24), 8(32). Card padding 16-24 px; grid gap 16 px; section gaps 24-32 px.
 - Radius: `sm` 6 px (inputs, badges, code block), `md` 10 px (cards, buttons, tiles), `lg` 14 px (dialogs).
 - Shadow: cards at rest none (border only, data apps stay flat); dialogs and tooltips `md` `0 6px 16px rgba(0,0,0,0.10)` (reduced opacity in dark, lean on borders).
 
@@ -91,7 +91,7 @@ Panel title + legend row, then the uPlot canvas at a fixed 280 px height (no lay
 Panel title, then up to 10 rows: key (truncated with ellipsis + `title` attr), proportional background bar (`series-1` at 12% opacity, width = value/max), pageview count right-aligned in tabular-nums. Row hover: `surface-2` wash. Loading: 5 skeleton rows. Empty: "Nothing recorded in this range". Error: message + retry. Country rows prepend the ISO code; direct traffic shows "(direct)".
 
 ### Range picker
-Preset list (Today, Last 7 days, Last 30 days, Last 90 days) as a segmented control or menu. Selected: 600 weight + check, `surface-2` fill — selection is never color-alone. Hover: ghost wash. Focus-visible: 2 px accent ring, 2 px offset. Keyboard: arrow keys move, Enter selects.
+Preset list (Today, Last 7 days, Last 30 days, Last 90 days) as a segmented control or menu. Selected: 600 weight + check, `surface-2` fill - selection is never color-alone. Hover: ghost wash. Focus-visible: 2 px accent ring, 2 px offset. Keyboard: arrow keys move, Enter selects.
 
 ### Site picker
 Standard select/combobox listing site names with domain in `fg-muted`. Same hover/focus/selected treatment as the range picker. With one site it renders as a static label.
@@ -114,7 +114,7 @@ Label above input, always visible. Border `border`; focus: accent border + ring;
 `<pre><code>` in `surface-2`, radius `sm`, 13 px monospace (`ui-monospace` stack), horizontal scroll on overflow, with a Copy button (secondary) that flips to "Copied" with a `success` check for 2 s and announces via `aria-live`.
 
 ### Verify status
-Badge: "Waiting for first pageview" (`fg-muted`, subtle pulse while polling; pulse removed under reduced motion) flips to "Verified" (`success` + check icon). Icon plus text always — never color alone.
+Badge: "Waiting for first pageview" (`fg-muted`, subtle pulse while polling; pulse removed under reduced motion) flips to "Verified" (`success` + check icon). Icon plus text always - never color alone.
 
 ### Confirm dialog (delete site)
 Modal on `surface`, radius `lg`, shadow `md`, focus-trapped, `Esc` cancels, focus returns to the trigger. Body names the site and states the data will be deleted. Actions: secondary "Cancel" (initial focus), danger "Delete site" with loading state.

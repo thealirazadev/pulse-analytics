@@ -8,7 +8,7 @@ pulse-analytics is self-hosted and released from `main`. Security fixes land on
 
 ## Reporting a vulnerability
 
-Please report security issues privately — do not open a public issue, and do
+Please report security issues privately - do not open a public issue, and do
 not include a working exploit in any public discussion.
 
 Use GitHub's private reporting form:
@@ -30,7 +30,7 @@ days. If a fix is warranted, the advisory is published once the fix is on
 In scope:
 
 - authentication and session handling (`lib/auth/`, `middleware.ts`);
-- the public ingest endpoint (`/api/collect`) — validation, origin checking,
+- the public ingest endpoint (`/api/collect`) - validation, origin checking,
   and rate limiting;
 - the rollup job endpoint (`/api/jobs/rollup`) and its bearer authorization;
 - SQL injection or data leakage in any query;

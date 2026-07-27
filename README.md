@@ -8,18 +8,18 @@ snippet to their site; pulse collects pageviews without cookies or persistent
 identifiers, aggregates them into hourly and daily rollups, and shows a dashboard
 with pageviews, unique visitors, top pages, referrers, countries, and device
 classes over selectable time ranges. Unique visitors are counted with a
-daily-rotating salted hash, so nobody — including the operator — can link a
+daily-rotating salted hash, so nobody - including the operator - can link a
 visitor across days.
 
 The system is three decoupled paths: a cheap write path (`/api/collect` inserts
 raw events), a scheduled idempotent aggregation job (`/api/jobs/rollup`), and a
-read path (the dashboard, which queries only the rollup tables — never raw
+read path (the dashboard, which queries only the rollup tables - never raw
 events).
 
 ## Screenshots
 
-The dashboard over the last 7 days — pageviews and unique-visitor time-series,
-summary tiles, and the top pages / referrers / countries / devices breakdowns —
+The dashboard over the last 7 days - pageviews and unique-visitor time-series,
+summary tiles, and the top pages / referrers / countries / devices breakdowns -
 in light and dark themes:
 
 ![Pulse dashboard, light theme: 7-day pageviews and unique-visitor time-series with summary tiles and top pages, referrers, countries and device breakdown panels for the demo site Northwind Store](docs/images/dashboard-light.png)
@@ -70,13 +70,13 @@ cp .env.example .env
 
 Fill in `.env`:
 
-- `DATABASE_URL` — e.g. `postgres://pulse:pulse@localhost:5432/pulse`
-- `SESSION_SECRET` — `openssl rand -hex 32`
-- `ADMIN_EMAIL` — your login email
-- `ADMIN_PASSWORD_HASH` — `npm run hash-password -- 'your-password'`
-- `CRON_SECRET` — `openssl rand -hex 24`
-- `APP_URL` — the public base URL (`http://localhost:3000` in dev)
-- `GEOIP_DB_PATH` — optional absolute path to a MaxMind GeoLite2-Country.mmdb;
+- `DATABASE_URL` - e.g. `postgres://pulse:pulse@localhost:5432/pulse`
+- `SESSION_SECRET` - `openssl rand -hex 32`
+- `ADMIN_EMAIL` - your login email
+- `ADMIN_PASSWORD_HASH` - `npm run hash-password -- 'your-password'`
+- `CRON_SECRET` - `openssl rand -hex 24`
+- `APP_URL` - the public base URL (`http://localhost:3000` in dev)
+- `GEOIP_DB_PATH` - optional absolute path to a MaxMind GeoLite2-Country.mmdb;
   leave empty to disable country resolution (countries show as "Unknown")
 
 Apply the database schema:
@@ -98,7 +98,7 @@ site's `<head>`, and the site flips to verified on the first pageview.
 
 ### Tracking custom events
 
-The snippet exposes a tiny global for named events — counts only, no properties:
+The snippet exposes a tiny global for named events - counts only, no properties:
 
 ```html
 <script>
@@ -158,7 +158,7 @@ expired daily salts.
 ## Test
 
 Unit, component, and integration tests run with Vitest. Integration tests need a
-reachable Postgres — create a disposable test database and point
+reachable Postgres - create a disposable test database and point
 `TEST_DATABASE_URL` at it (default `postgres://localhost:5432/pulse_test`):
 
 ```bash
@@ -177,7 +177,7 @@ npm run test:e2e   # Playwright smoke; needs a fresh DB and E2E_ADMIN_PASSWORD s
 
 GitHub Actions runs `typecheck`, `lint`, `test`, and `build` against a
 `postgres:16` service container on every push and pull request to `main`. The
-Playwright e2e smoke test is not part of CI — it needs a browser download and a
+Playwright e2e smoke test is not part of CI - it needs a browser download and a
 running production server, so run it locally with `npm run test:e2e`.
 
 ## Design decisions
@@ -201,20 +201,20 @@ cron runs at once: running the job twice, or re-covering an hour after a crash,
 always converges to the same rows. The job processes "watermark to now" rather
 than "the last hour", so a missed run self-heals on the next tick. An
 incrementing counter would have been cheaper per run but would drift
-permanently on any double-delivery or partial failure — and losing events is
+permanently on any double-delivery or partial failure - and losing events is
 tolerable here, while corrupting rollups is not.
 
 **Cookieless visitor counting with a daily-rotating salt.** A visitor is
 identified as `sha256(daily_salt || site_id || ip || ua)`, truncated to 128
 bits. The IP exists only in memory for the geo lookup and the hash, and is
-never stored or logged. Nothing at all is written to the visitor's browser — no
+never stored or logged. Nothing at all is written to the visitor's browser - no
 cookie, no localStorage, no fingerprint. Because the snippet and the endpoint
 store nothing on the visitor's device, there is no device storage access for a
 consent banner to gate, which is the point of the design. The salt's
 _destruction_ is the real guarantee: the housekeeping step deletes every salt
 for a day before today, and recomputing past rollups never needs it (hashes are
-already materialized on the raw rows). Once a day ends, no party — the operator
-included — can recompute or verify that day's hashes, so cross-day linkage is
+already materialized on the raw rows). Once a day ends, no party - the operator
+included - can recompute or verify that day's hashes, so cross-day linkage is
 impossible rather than merely disallowed.
 
 **Multi-day "visitors" is the sum of daily uniques.** Daily figures are an
@@ -236,7 +236,7 @@ simpler operationally but is the wrong shape for this write pattern.
 
 **Drizzle over Prisma.** The heart of this app is hand-written aggregation SQL:
 `GROUP BY` over time buckets, `COUNT(DISTINCT visitor_hash)`, and
-`ON CONFLICT DO UPDATE`. Drizzle is SQL-first — the schema is plain TypeScript,
+`ON CONFLICT DO UPDATE`. Drizzle is SQL-first - the schema is plain TypeScript,
 migrations are generated SQL files reviewed like code, and raw SQL composes
 naturally. Prisma's engine layer and generated client add weight and distance
 from SQL for no benefit here.
@@ -245,7 +245,7 @@ from SQL for no benefit here.
 credentials does not justify NextAuth or a session store. `node:crypto`
 supplies scrypt for the password hash, HMAC-SHA-256 for a stateless signed
 session cookie, SHA-256 for visitor hashes, and `randomBytes` for salts. The
-cookie _is_ the session — there is no server-side session table. One
+cookie _is_ the session - there is no server-side session table. One
 consequence worth naming: `middleware.ts` runs on the Edge runtime, which has
 no `node:crypto`, so it performs a presence-only cookie gate; authoritative
 signature and expiry verification happens in every guarded route handler and
@@ -274,7 +274,7 @@ other containers were running, so these are conservative lower bounds rather
 than tuned peak figures. `GEOIP_DB_PATH` was empty, so no geo lookup was
 performed.
 
-**Ingest throughput** — `POST /api/collect` over HTTP, 20,000 requests at
+**Ingest throughput** - `POST /api/collect` over HTTP, 20,000 requests at
 concurrency 64, spread over 500 registered sites so the per-site rate limiter
 (10/s sustained, burst 50) never engages. Every request returned `202` and was
 stored; there were no throttled or failed requests in any trial.
@@ -288,7 +288,7 @@ Each accepted request performs payload validation, a site lookup, the origin
 check, device classification, the salted visitor hash, and one `event_raw`
 insert.
 
-**Rollup aggregation** — one full `POST /api/jobs/rollup` over a synthetically
+**Rollup aggregation** - one full `POST /api/jobs/rollup` over a synthetically
 seeded volume spanning a 24-hour window, with the watermark rewound so a single
 invocation recomputes all 25 hourly buckets plus the 2 UTC days they touch
 (6 statements per day). Events are seeded in ascending `ts` order to match what
