@@ -4,6 +4,7 @@ import { Header } from "@/components/layout/Header";
 import { BreakdownPanel } from "@/components/dashboard/BreakdownPanel";
 import { ChartPanel } from "@/components/dashboard/ChartPanel";
 import { CustomEventsPanel } from "@/components/dashboard/CustomEventsPanel";
+import { GoalsPanel } from "@/components/dashboard/GoalsPanel";
 import { RangePicker } from "@/components/dashboard/RangePicker";
 import { SitePicker } from "@/components/dashboard/SitePicker";
 import { StatTilesPanel } from "@/components/dashboard/StatTilesPanel";
@@ -74,7 +75,10 @@ export default async function SiteDashboard({ params, searchParams }: PageProps)
               title="Devices"
             />
           </div>
-          <CustomEventsPanel siteId={siteId} range={range} />
+          <div className="grid gap-4 md:grid-cols-2">
+            <GoalsPanel siteId={siteId} range={range} />
+            <CustomEventsPanel siteId={siteId} range={range} />
+          </div>
         </div>
       </main>
     </>
