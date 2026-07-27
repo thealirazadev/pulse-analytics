@@ -19,6 +19,8 @@ const TABLES = [
   "rollup_country_daily",
   "rollup_device_daily",
   "rollup_custom_event_daily",
+  "rollup_goal_daily",
+  "goal",
   "rollup_watermark",
   "site",
 ];

@@ -12,6 +12,7 @@ import {
   smallint,
   text,
   timestamp,
+  unique,
 } from "drizzle-orm/pg-core";
 
 /** A registered site. `public_id` is what the snippet and all HTTP APIs use. */
@@ -25,6 +26,37 @@ export const site = pgTable("site", {
     .defaultNow(),
   verifiedAt: timestamp("verified_at", { withTimezone: true }),
 });
+
+/**
+ * A conversion goal for a site. `kind` selects which existing raw stream a
+ * completion is matched against: 'path' matches `event_raw.path`, 'event'
+ * matches `custom_event_raw.name`. `match_value` holds the target (a normalized
+ * path or a custom-event name). A site cannot register the same (kind, target)
+ * twice. No new collection path: goals reuse the two existing raw streams.
+ */
+export const goal = pgTable(
+  "goal",
+  {
+    id: serial("id").primaryKey(),
+    siteId: integer("site_id")
+      .notNull()
+      .references(() => site.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    kind: text("kind").notNull(),
+    matchValue: text("match_value").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique("goal_site_kind_match_uq").on(
+      table.siteId,
+      table.kind,
+      table.matchValue,
+    ),
+    index("goal_site_idx").on(table.siteId),
+  ],
+);
 
 /**
  * Per-UTC-day random salt. Created lazily by the day's first event and
@@ -183,6 +215,28 @@ export const rollupCustomEventDaily = pgTable(
   (table) => [primaryKey({ columns: [table.siteId, table.day, table.name] })],
 );
 
+/**
+ * Per-day completion count for each goal. Completions are plain occurrence
+ * counts (a path goal counts matching pageviews, an event goal counts matching
+ * custom events); there is no distinct-visitor figure. `goal_id` already
+ * implies the site; `site_id` is denormalized for direct site-scoped reads,
+ * matching every other rollup table. Recompute-and-overwrite like the rest.
+ */
+export const rollupGoalDaily = pgTable(
+  "rollup_goal_daily",
+  {
+    goalId: integer("goal_id")
+      .notNull()
+      .references(() => goal.id, { onDelete: "cascade" }),
+    siteId: integer("site_id")
+      .notNull()
+      .references(() => site.id, { onDelete: "cascade" }),
+    day: date("day").notNull(),
+    completions: integer("completions").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.goalId, table.day] })],
+);
+
 /** Single-row table: every hour bucket ending <= finalized_through is final. */
 export const rollupWatermark = pgTable(
   "rollup_watermark",
@@ -198,3 +252,5 @@ export const rollupWatermark = pgTable(
 export type Site = typeof site.$inferSelect;
 export type NewSite = typeof site.$inferInsert;
 export type EventRaw = typeof eventRaw.$inferSelect;
+export type Goal = typeof goal.$inferSelect;
+export type NewGoal = typeof goal.$inferInsert;
