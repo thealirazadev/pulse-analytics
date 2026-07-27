@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildBuckets,
+  conversionRate,
   parseDimension,
   parseLimit,
   parseRange,
@@ -8,6 +9,22 @@ import {
 } from "@/lib/stats/ranges";
 
 const NOW = new Date("2026-07-18T09:30:00Z");
+
+describe("conversionRate", () => {
+  it("is 0 when there are no visitors (no division by zero)", () => {
+    expect(conversionRate(5, 0)).toBe(0);
+    expect(conversionRate(0, 0)).toBe(0);
+  });
+
+  it("is the exact completions-over-visitors fraction", () => {
+    expect(conversionRate(25, 100)).toBe(0.25);
+    expect(conversionRate(0, 100)).toBe(0);
+  });
+
+  it("can exceed 1 for a repeatable goal completed more than once per visitor", () => {
+    expect(conversionRate(3, 2)).toBe(1.5);
+  });
+});
 
 describe("parseRange", () => {
   it("resolves today to the current UTC day at hourly interval", () => {

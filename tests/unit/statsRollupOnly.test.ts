@@ -16,4 +16,12 @@ describe("read-path isolation", () => {
     const source = readFileSync(resolve("lib/stats/queries.ts"), "utf8");
     expect(source).not.toMatch(/custom_event_raw|customEventRaw/);
   });
+
+  it("the goals read path (getGoals) reads rollups only, no raw table", () => {
+    const source = readFileSync(resolve("lib/stats/queries.ts"), "utf8");
+    expect(source).toMatch(/getGoals/);
+    expect(source).not.toMatch(
+      /event_raw|eventRaw|custom_event_raw|customEventRaw/,
+    );
+  });
 });

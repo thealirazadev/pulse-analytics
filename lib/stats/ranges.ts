@@ -104,6 +104,18 @@ export function buildBuckets(
   return buckets;
 }
 
+/**
+ * Goal conversion rate as a fraction: completions per unique visitor over the
+ * range. Zero visitors yields 0. May exceed 1 for repeatable goals (a visitor
+ * can complete more than once); the panel renders it as a percentage and labels
+ * the denominator ("visitors = unique per day, summed") honestly. `visitors` is
+ * the same figure `/api/stats/summary` returns for the site and range.
+ */
+export function conversionRate(completions: number, visitors: number): number {
+  if (visitors <= 0) return 0;
+  return completions / visitors;
+}
+
 /** Merge rollup points onto the continuous bucket list, filling gaps with zeros. */
 export function zeroFill(
   buckets: string[],

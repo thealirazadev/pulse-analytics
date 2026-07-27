@@ -1,10 +1,12 @@
-import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import {
+  goal,
   rollupCountryDaily,
   rollupCustomEventDaily,
   rollupDaily,
   rollupDeviceDaily,
+  rollupGoalDaily,
   rollupHourly,
   rollupPageDaily,
   rollupReferrerDaily,
@@ -32,6 +34,14 @@ export interface BreakdownRow {
 export interface CustomEventRow {
   name: string;
   count: number;
+}
+
+export interface GoalRow {
+  id: number;
+  name: string;
+  kind: string;
+  match: string;
+  completions: number;
 }
 
 /** Resolve a public site id to its internal id, or null if unknown. */
@@ -171,6 +181,41 @@ export async function getBreakdown(
     pageviews: r.pageviews,
     visitors: r.visitors,
   }));
+}
+
+/**
+ * A site's goals with their summed completions over the range, ordered by
+ * completions desc. Reads `goal` and `rollup_goal_daily` only — never a raw
+ * table. The left join keeps goals with zero completions in the result so a
+ * newly registered goal still appears. Conversion rate is computed in the route
+ * from these completions and the range's visitor total.
+ */
+export async function getGoals(
+  siteId: number,
+  range: ResolvedRange,
+): Promise<GoalRow[]> {
+  const completions = sql<number>`coalesce(sum(${rollupGoalDaily.completions}), 0)::int`;
+  const rows = await getDb()
+    .select({
+      id: goal.id,
+      name: goal.name,
+      kind: goal.kind,
+      match: goal.matchValue,
+      completions,
+    })
+    .from(goal)
+    .leftJoin(
+      rollupGoalDaily,
+      and(
+        eq(rollupGoalDaily.goalId, goal.id),
+        gte(rollupGoalDaily.day, range.from),
+        lte(rollupGoalDaily.day, range.to),
+      ),
+    )
+    .where(eq(goal.siteId, siteId))
+    .groupBy(goal.id)
+    .orderBy(desc(completions), asc(goal.id));
+  return rows;
 }
 
 /** Top named custom events by summed count over the range (rollup table only). */
