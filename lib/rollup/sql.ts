@@ -125,6 +125,50 @@ export async function recomputeCustomEventDay(
   `;
 }
 
+/**
+ * Recompute goal completions for one UTC day. A `path` goal counts matching
+ * `event_raw.path` rows; an `event` goal counts matching `custom_event_raw.name`
+ * rows. Completions are occurrence counts keyed by (goal_id, day), with the same
+ * recompute-and-overwrite idempotency and explicit UTC timestamptz day bounds as
+ * the other rollups. Goals derive from the two existing raw streams, so there is
+ * no new raw table and no new prune step. A goal with no matching events on the
+ * day produces no row; the read path left-joins so it still surfaces with zero.
+ */
+export async function recomputeGoalDay(
+  sql: Queryable,
+  day: string,
+): Promise<void> {
+  const dayStart = `${day}T00:00:00Z`;
+  await sql`
+    INSERT INTO rollup_goal_daily (goal_id, site_id, day, completions)
+    SELECT g.id, g.site_id, ${day}::date, count(*)::int
+    FROM goal g
+    JOIN event_raw e
+      ON e.site_id = g.site_id
+      AND e.path = g.match_value
+      AND e.ts >= ${dayStart}::timestamptz
+      AND e.ts < ${dayStart}::timestamptz + interval '1 day'
+    WHERE g.kind = 'path'
+    GROUP BY g.id, g.site_id
+    ON CONFLICT (goal_id, day)
+      DO UPDATE SET completions = EXCLUDED.completions
+  `;
+  await sql`
+    INSERT INTO rollup_goal_daily (goal_id, site_id, day, completions)
+    SELECT g.id, g.site_id, ${day}::date, count(*)::int
+    FROM goal g
+    JOIN custom_event_raw c
+      ON c.site_id = g.site_id
+      AND c.name = g.match_value
+      AND c.ts >= ${dayStart}::timestamptz
+      AND c.ts < ${dayStart}::timestamptz + interval '1 day'
+    WHERE g.kind = 'event'
+    GROUP BY g.id, g.site_id
+    ON CONFLICT (goal_id, day)
+      DO UPDATE SET completions = EXCLUDED.completions
+  `;
+}
+
 /** Delete raw events older than the cutoff; returns the number pruned. */
 export async function pruneRawOlderThan(
   sql: Queryable,

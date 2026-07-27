@@ -6,6 +6,7 @@ import {
   pruneRawOlderThan,
   recomputeCustomEventDay,
   recomputeDay,
+  recomputeGoalDay,
   recomputeHour,
 } from "./sql";
 
@@ -113,11 +114,12 @@ async function execute(now: Date): Promise<RollupSummary> {
   const touchedDays = new Set(processed.map((b) => utcDayString(b)));
   for (const day of touchedDays) {
     try {
-      // Pageview rollups and custom-event rollups for the day share one
+      // Pageview, custom-event, and goal rollups for the day share one
       // transaction so the day's read-path state advances atomically.
       await sql.begin(async (tx) => {
         await recomputeDay(tx, day);
         await recomputeCustomEventDay(tx, day);
+        await recomputeGoalDay(tx, day);
       });
     } catch (err) {
       logger.error("rollup_day_failed", {
