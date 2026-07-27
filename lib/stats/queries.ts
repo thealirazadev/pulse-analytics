@@ -185,7 +185,7 @@ export async function getBreakdown(
 
 /**
  * A site's goals with their summed completions over the range, ordered by
- * completions desc. Reads `goal` and `rollup_goal_daily` only — never a raw
+ * completions desc. Reads `goal` and `rollup_goal_daily` only, never a raw
  * table. The left join keeps goals with zero completions in the result so a
  * newly registered goal still appears. Conversion rate is computed in the route
  * from these completions and the range's visitor total.
