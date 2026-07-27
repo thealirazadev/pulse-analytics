@@ -19,7 +19,7 @@
   "dependencies": {
     "drizzle-orm": "0.45.2",
     "maxmind": "5.0.6",
-    "next": "15.5.20",
+    "next": "15.5.21",
     "postgres": "3.4.9",
     "react": "19.2.7",
     "react-dom": "19.2.7",
