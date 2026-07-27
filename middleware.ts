@@ -29,6 +29,7 @@ export const config = {
     "/sites/:path*",
     "/api/stats/:path*",
     "/api/sites/:path*",
+    "/api/goals/:path*",
     "/api/auth/logout",
   ],
 };
