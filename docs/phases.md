@@ -219,6 +219,103 @@ The write/read split, UTC-pinned aggregation, and privacy model are unchanged an
 
 ---
 
+## Phase 8 — Goals and conversions (v2)
+
+Goal: a site owner defines a goal for a site — either a target path (e.g. `/thank-you`)
+or a named custom event that already exists in the repo. The aggregation job counts goal
+completions per (site, goal, UTC day) into a dedicated rollup, and the dashboard shows a
+goals panel listing each goal with its completions and a conversion rate over the selected
+range.
+
+The three invariants are unchanged and non-negotiable: the write/read split (ingestion
+writes raw, dashboards read rollups only — `lib/stats/queries.ts` never touches a raw
+table), the UTC-pinned recompute-and-overwrite aggregation, and the privacy model (no IP
+ever stored; goals add no new personal-data path). Goals reuse the existing pageview and
+custom-event plumbing rather than adding a new collection path: a `path` goal is matched
+against `event_raw.path`, an `event` goal against `custom_event_raw.name`. No new beacon,
+no snippet change.
+
+### Conversion rate
+
+For a range, a goal's `completions` is the summed daily completion count over the range,
+and its `conversionRate` is `completions / visitors` where `visitors` is the range's summed
+daily unique visitors — the exact figure `/api/stats/summary` already returns for the site.
+The rate is returned as a fraction (0..n) and rendered as a percentage. Because completions
+are total occurrences (a visitor may complete a repeatable goal more than once) and visitors
+is unique-per-day summed, the rate is "completions per visitor" and can exceed 100% for
+repeatable goals; the panel labels the denominator honestly, mirroring the existing "per
+day, summed" caption. `visitors = 0` yields a rate of 0.
+
+### Definition of done
+- New tables via a forward Drizzle migration: `goal` (id, site_id, name, kind, match_value,
+  created_at; `kind` in `path`|`event`; unique per (site_id, kind, match_value); site-leading
+  index; `ON DELETE CASCADE` from site) and `rollup_goal_daily` (goal_id, site_id, day,
+  completions; PK (goal_id, day); cascade from both goal and site). Applied migrations are
+  never edited; this is a fix-forward migration.
+- Goal validation is hand-rolled in `lib/goals/validate.ts` (no schema library): `kind`
+  whitelist, `name` non-empty/max 80, and `match_value` validated by reusing the existing
+  ingest validators — `normalizePath` for `path` goals, `EVENT_NAME_PATTERN` for `event`
+  goals.
+- Goal CRUD over `/api/goals` (session-guarded, re-checked in each handler, added to the
+  middleware matcher): `GET ?site=` lists a site's goals, `POST` registers one (`409` on a
+  duplicate target), `DELETE /api/goals/{id}` removes one (cascades its rollups). Standard
+  error body throughout.
+- The rollup job recomputes `rollup_goal_daily` for every touched UTC day inside the same
+  watermark-driven, UTC-pinned, recompute-and-overwrite pass and day transaction as the
+  pageview and custom-event rollups, using explicit `timestamptz` day bounds. A `path` goal
+  counts matching `event_raw` rows; an `event` goal counts matching `custom_event_raw` rows.
+  Running the job twice yields byte-identical `rollup_goal_daily` rows. No new raw table and
+  no new prune step (goals derive from the two existing raw tables).
+- `GET /api/stats/goals?site=&range=` reads `goal` and `rollup_goal_daily` only (plus
+  `rollup_daily` for the visitors denominator) and returns each goal with its completions and
+  conversion rate for the range; goals with zero completions still appear (left join). A
+  static test asserts the goals read path references no raw table.
+- The dashboard shows a "Goals" panel for the selected site and range: each goal with its
+  name/target, completions, and conversion rate, with the same skeleton/empty/error states as
+  the other panels. Managing goals (register/delete) is via the `/api/goals` API, documented
+  in the README.
+
+### Definition of done — tests
+- Unit: goal validation (good path/event goals; bad kind; empty/over-length name; bad path;
+  bad event name; non-string inputs); conversion-rate math (zero visitors → 0, exact
+  fraction, repeatable goal > 100%).
+- Integration: goal CRUD (create, list by site, duplicate → 409, delete → 204 and cascade);
+  the job counts a `path` goal by `event_raw.path` and an `event` goal by
+  `custom_event_raw.name`, is byte-identical across two runs, and a goal registered after
+  events still counts completions still inside the retention window; the stats endpoint
+  returns completions and the correct conversion rate over a seeded range.
+- Static: the goals read layer references no raw table (mirrors the `event_raw` guard).
+
+### Manual test checklist
+- `POST /api/goals` with `{ site, kind:"path", name:"Thank you", match:"/thank-you" }`:
+  `201` with the goal; the same target again: `409`. `POST` with `kind:"event"` and an
+  existing event name: `201`.
+- Seed pageviews to `/thank-you` and `signup` events (curl loop), run the rollup route, then
+  `GET /api/stats/goals?site=&range=today`: each goal shows the expected completions and a
+  conversion rate equal to completions/visitors. Run the rollup again: identical completions.
+- Register a bad goal (`kind:"path"` with `match:"no-slash"`, or `kind:"event"` with
+  `match:"bad name!"`): `400 invalid_payload`, nothing stored.
+- Open the dashboard Goals panel: goals list with completions and conversion rate; switching
+  range updates them; a site with no goals shows the empty state.
+- `DELETE /api/goals/{id}`: `204`; the goal and its `rollup_goal_daily` rows are gone; other
+  goals untouched.
+- Privacy spot-check: no IP or raw UA in any log line or table; the goals read path touches
+  no raw table.
+
+### Commits
+- `docs(phases): add goals and conversions phase 8`
+- `feat(db): add goal and goal rollup tables`
+- `feat(goals): add goal validation and serialization`
+- `feat(goals): add goal crud api`
+- `feat(rollup): aggregate goal completions per utc day`
+- `test(rollup): cover goal aggregation idempotency and matching`
+- `feat(stats): add goals endpoint with conversion rate`
+- `feat(dashboard): add goals panel`
+- `docs: document goals in architecture api and readme`
+- `docs(memory): log goals feature and architecture flag`
+
+---
+
 ## Phase verification (run at the end of every phase)
 
 - [ ] `npm run dev` runs; the phase's pages/routes work without console errors or warnings.
