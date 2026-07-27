@@ -109,6 +109,45 @@ All require the session cookie (`401` otherwise). Sites are addressed by `public
 
 ---
 
+## Goals
+
+Session cookie required (`401` otherwise). A goal is a conversion target for a site: a
+`path` (matched against pageview paths) or an `event` (matched against existing custom-event
+names). Goals reuse the two existing raw streams; there is no new beacon. They are addressed
+by their numeric `id` (admin-only; no public surface).
+
+### GET /api/goals?site=pk_x8f2ab31
+
+`200`:
+
+```json
+{ "goals": [ { "id": 1, "kind": "path", "name": "Thank you", "match": "/thank-you",
+               "createdAt": "2026-07-27T09:00:00Z" } ] }
+```
+
+`404` `not_found` for a missing or unknown `site`.
+
+### POST /api/goals
+
+```json
+{ "site": "pk_x8f2ab31", "kind": "path", "name": "Thank you", "match": "/thank-you" }
+```
+
+- `kind` is `path` or `event`. `name` is non-empty, max 80 chars. `match` is validated by
+  reusing the ingest validators: a normalized path for `path` goals (query/fragment stripped,
+  must start with `/`), a custom-event name (`^[A-Za-z0-9._-]{1,64}$`) for `event` goals.
+- `201`: the goal object (same shape as above).
+- `400` `invalid_payload`: bad `kind`, `name`, or `match`, or a missing `site`.
+- `404` `not_found`: unknown `site`.
+- `409` `conflict`: the site already has a goal for this (kind, target).
+
+### DELETE /api/goals/{id}
+
+`204`: deletes the goal; its `rollup_goal_daily` rows go with it via `ON DELETE CASCADE`.
+`404` `not_found` for an unknown id.
+
+---
+
 ## Stats (dashboard data)
 
 Session cookie required. Common query params, validated in `lib/stats/ranges.ts`:
@@ -175,6 +214,26 @@ Rows are ordered by pageviews desc. Sentinels are translated before the response
 
 Top named custom events by summed `count` over the range, ordered by count desc. Reads `rollup_custom_event_daily` only (never a raw table). `400` `invalid_range` for a bad range or limit; `404` `not_found` for an unknown site.
 
+### GET /api/stats/goals?site=pk_x8f2ab31&range=7d
+
+`200`:
+
+```json
+{ "rows": [ { "id": 1, "name": "Thank you", "kind": "path", "match": "/thank-you",
+              "completions": 312, "conversionRate": 0.12 },
+            { "id": 2, "name": "Signups", "kind": "event", "match": "signup",
+              "completions": 40, "conversionRate": 0 } ],
+  "visitors": 2600 }
+```
+
+Each goal with its summed completions over the range and a conversion rate. `conversionRate`
+is a fraction: `completions / visitors`, where `visitors` is the range's summed daily unique
+visitors (the same figure `summary` returns, echoed here). It is `0` when there are no
+visitors and can exceed `1` for a repeatable goal (a visitor may complete it more than once).
+Rows are ordered by completions desc; goals with zero completions still appear (a left join
+keeps a newly registered goal in the list). Reads `goal` and `rollup_goal_daily` only (never
+a raw table). `400` `invalid_range` for a bad range; `404` `not_found` for an unknown site.
+
 ---
 
 ## Jobs
@@ -190,7 +249,7 @@ Top named custom events by summed `count` over the range, ordered by count desc.
   "saltsDestroyed": 1, "finalizedThrough": "2026-07-18T08:00:00Z" }
 ```
 
-`rawPruned` is the total rows removed from both raw tables (`event_raw` and `custom_event_raw`), which share the 72-hour retention window. `daysRecomputed` covers the pageview and custom-event daily rollups together.
+`rawPruned` is the total rows removed from both raw tables (`event_raw` and `custom_event_raw`), which share the 72-hour retention window. `daysRecomputed` covers the pageview, custom-event, and goal daily rollups together (they share each day's transaction). Goals add no new raw table and no new prune step.
 
 - `401` `unauthorized` — missing/wrong bearer token.
 - `409` `conflict` — a previous run is still in progress (advisory lock held); the caller just waits for the next tick.

@@ -112,6 +112,36 @@ reuses the same beacon transport as pageviews, sends nothing under DNT/GPC or
 before the `data-site` snippet has loaded, and never throws into your page.
 Counts appear in the dashboard's "Custom events" panel after the next rollup run.
 
+### Goals and conversions
+
+A goal is a conversion target for a site: either a `path` (matched against
+pageview paths) or an `event` (matched against a named custom event you already
+track). The rollup job counts completions per goal per UTC day, and the
+dashboard's "Goals" panel shows each goal with its completions and a conversion
+rate over the selected range.
+
+Register, list, and delete goals through the session-guarded `/api/goals` API:
+
+```bash
+# A path goal: a completion is any pageview of /thank-you
+curl -X POST "$APP_URL/api/goals" -H "content-type: application/json" \
+  -b pulse_session=... \
+  -d '{"site":"pk_x8f2ab31","kind":"path","name":"Thank you","match":"/thank-you"}'
+
+# An event goal: a completion is each `signup` custom event
+curl -X POST "$APP_URL/api/goals" -H "content-type: application/json" \
+  -b pulse_session=... \
+  -d '{"site":"pk_x8f2ab31","kind":"event","name":"Signups","match":"signup"}'
+```
+
+Goals reuse the two existing raw streams, so there is no new beacon or snippet
+change. The conversion rate is `completions / visitors`, where `visitors` is the
+range's summed daily unique visitors (the same figure the summary tiles show).
+Because completions are total occurrences and visitors is unique-per-day summed,
+the rate is "completions per visitor" and can exceed 100% for a repeatable goal.
+Completions appear after the next rollup run; the catch-up horizon is the same
+72 hours as raw retention, so a goal only counts completions still in that window.
+
 ### Scheduling the aggregation job
 
 The dashboard is only as fresh as the last rollup run. Schedule a call every

@@ -17,14 +17,14 @@ Custom events share this path. The snippet also exposes `window.pulse('event', '
 ### Aggregation job (the bridge)
 
 6. A scheduler (system cron, a container cron sidecar, or a platform cron) calls `POST /api/jobs/rollup` every 5 minutes with `Authorization: Bearer $CRON_SECRET`.
-7. The job recomputes every hourly bucket from `rollup_watermark.finalized_through` up to and including the current partial hour, straight from `event_raw`, and upserts the results (overwrite, never increment). It then recomputes the daily tables for every UTC day touched by those hours — including `rollup_custom_event_daily` from `custom_event_raw`, in the same per-day transaction. Recompute-and-overwrite is the idempotency mechanism: running the job twice, or re-covering an hour after a crash, always converges to the same rows.
+7. The job recomputes every hourly bucket from `rollup_watermark.finalized_through` up to and including the current partial hour, straight from `event_raw`, and upserts the results (overwrite, never increment). It then recomputes the daily tables for every UTC day touched by those hours, including `rollup_custom_event_daily` from `custom_event_raw` and `rollup_goal_daily` (goal completions matched from `event_raw`/`custom_event_raw`), in the same per-day transaction. Recompute-and-overwrite is the idempotency mechanism: running the job twice, or re-covering an hour after a crash, always converges to the same rows.
 8. The watermark advances past an hour only once the hour has been over for a 5-minute grace period. Because the job always processes "watermark to now" rather than "the last hour", missed runs self-heal: the next run backfills the whole gap. The catch-up horizon equals raw retention (72 hours); gaps older than that are permanently lost, which is acceptable (losing events is tolerable, corrupting rollups is not).
 9. Housekeeping in the same run: delete `event_raw` and `custom_event_raw` rows older than 72 hours whose day is finalized, and delete `daily_salt` rows for days before the current UTC day (salt destruction — see data model).
 
 ### Read path (dashboard)
 
 10. The admin logs in at `/login`; `POST /api/auth/login` verifies the env-configured credentials and sets a signed, HttpOnly session cookie. `middleware.ts` guards `/dashboard`, `/sites`, `/api/stats/*`, and `/api/sites*`.
-11. Dashboard pages are a server-rendered shell; the chart, tiles, breakdown panels, and the custom-events panel are client components that fetch `GET /api/stats/summary|timeseries|breakdown|events` when the site or range picker changes. Those routes read only the rollup tables via `lib/stats/queries.ts`.
+11. Dashboard pages are a server-rendered shell; the chart, tiles, breakdown panels, the custom-events panel, and the goals panel are client components that fetch `GET /api/stats/summary|timeseries|breakdown|events|goals` when the site or range picker changes. Those routes read only the rollup tables (and `goal` for goal definitions) via `lib/stats/queries.ts`. Goal definitions are managed separately through the session-guarded `/api/goals` CRUD API.
 
 ```
 Tracked site (browser)
@@ -40,11 +40,11 @@ event_raw + custom_event_raw  (72 h retention)       WRITE PATH
   |  prune old raw, destroy old salts, advance watermark
   v
 rollup_hourly / rollup_daily / rollup_{page,referrer,country,device}_daily
-rollup_custom_event_daily
+rollup_custom_event_daily / rollup_goal_daily
   |
   |  GET /api/stats/* (session cookie)                READ PATH
   v
-Dashboard (tiles, time-series chart, breakdowns, custom events)
+Dashboard (tiles, time-series chart, breakdowns, custom events, goals)
 ```
 
 ## Proposed folder / file tree
@@ -75,10 +75,13 @@ pulse-analytics/
       auth/logout/route.ts        POST logout
       sites/route.ts              GET list, POST create
       sites/[id]/route.ts         GET one (verify polling), DELETE
+      goals/route.ts              GET list (by site), POST register a goal
+      goals/[id]/route.ts         DELETE a goal
       stats/summary/route.ts      Totals for a range
       stats/timeseries/route.ts   Hourly/daily points for a range
       stats/breakdown/route.ts    Top-N per dimension
       stats/events/route.ts       Top-N custom events by count (rollup-only)
+      stats/goals/route.ts        Goals with completions + conversion rate (rollup-only)
   middleware.ts                   Session check for dashboard pages and APIs
   components/
     layout/
@@ -92,6 +95,8 @@ pulse-analytics/
       BreakdownList.tsx           Top-N rows with proportional bars
       CustomEventsPanel.tsx       Client; fetches /api/stats/events
       CustomEventsList.tsx        Top-N custom events with proportional bars
+      GoalsPanel.tsx              Client; fetches /api/stats/goals
+      GoalsList.tsx               Goals with completions + conversion rate, proportional bars
     sites/
       SiteForm.tsx                Register form with inline validation
       SnippetBlock.tsx            Copy-ready script tag
@@ -118,7 +123,10 @@ pulse-analytics/
       sql.ts                      The recompute/upsert statements (hand-written SQL)
     stats/
       queries.ts                  Rollup reads only — must not import event_raw
-      ranges.ts                   Range preset -> [from, to, interval], UTC
+      ranges.ts                   Range preset -> [from, to, interval], UTC; conversion-rate math
+    goals/
+      validate.ts                 Goal payload validation (reuses ingest validators)
+      serialize.ts                Goal row -> API shape
     auth/
       password.ts                 scrypt hash/verify (node:crypto)
       session.ts                  HMAC-signed cookie create/verify (node:crypto)
@@ -179,6 +187,28 @@ site (
 ```
 
 `public_id` (not the numeric id) is what the snippet and all HTTP APIs use, so internal ids never leak and domains can change without breaking snippets.
+
+### goal
+
+```
+goal (
+  id          serial PRIMARY KEY,
+  site_id     integer NOT NULL REFERENCES site(id) ON DELETE CASCADE,
+  name        text NOT NULL,            -- display name
+  kind        text NOT NULL,            -- 'path' | 'event'
+  match_value text NOT NULL,            -- target: a normalized path or a custom-event name
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (site_id, kind, match_value)   -- no duplicate goal for the same target
+)
+CREATE INDEX goal_site_idx ON goal (site_id);
+```
+
+A conversion goal for a site. `kind` selects which existing raw stream a completion is
+matched against: a `path` goal matches `event_raw.path`, an `event` goal matches
+`custom_event_raw.name`. Goals add **no new collection path**: no beacon, no snippet change;
+they reuse the two raw streams that already exist. Goals are managed only through the
+session-guarded `/api/goals` API (single admin), so (unlike `site`) they are addressed by
+their numeric id, which has no public surface. Deleting a goal cascades its rollup rows.
 
 ### daily_salt
 
@@ -288,6 +318,35 @@ recomputed and overwritten from `custom_event_raw` exactly like the pageview
 breakdowns. It has no `visitors` column: custom events are counts-only, so there
 is no distinct-visitor figure. The dashboard's "Custom events" panel sums
 `count` over the selected range grouped by name, top-N by count.
+
+```
+rollup_goal_daily (
+  goal_id     integer NOT NULL REFERENCES goal(id) ON DELETE CASCADE,
+  site_id     integer NOT NULL REFERENCES site(id) ON DELETE CASCADE,
+  day         date NOT NULL,
+  completions integer NOT NULL,             -- occurrence count, no distinct-visitor figure
+  PRIMARY KEY (goal_id, day)
+)
+```
+
+`rollup_goal_daily` is a per-(goal, UTC day) completion count, recomputed and overwritten in
+the same watermark-driven pass as the other daily rollups. For a `path` goal a completion is
+a matching `event_raw` row (by path); for an `event` goal it is a matching `custom_event_raw`
+row (by name). `goal_id` already implies the site; `site_id` is denormalized for direct
+site-scoped reads, matching every other rollup table. Like custom events, completions are
+occurrence counts only; a repeatable goal can be completed more than once by the same
+visitor, and there is no distinct-visitor figure (an `event` goal has no visitor hash at all).
+Recompute needs no new raw table and adds no prune step: goals derive entirely from the two
+existing raw streams, which are already pruned at 72 hours. The catch-up horizon is therefore
+the same 72 hours, so a goal registered now only counts completions still inside that window.
+
+The dashboard's "Goals" panel reads `GET /api/stats/goals`, which lists each goal with its
+summed completions over the range and a conversion rate. The conversion rate is
+`completions / visitors`, where `visitors` is the range's summed daily unique visitors, the
+exact figure `/api/stats/summary` returns. Because completions are total occurrences and
+`visitors` is unique-per-day summed, the rate is "completions per visitor" and can exceed
+100% for a repeatable goal; the panel labels the denominator, mirroring the existing "per
+day, summed" caption.
 
 NULL dimensions are mapped to sentinels (`''` direct, `'ZZ'` unknown) because primary-key columns cannot be NULL; `lib/stats/queries.ts` maps them back to display labels.
 

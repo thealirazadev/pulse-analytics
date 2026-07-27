@@ -219,16 +219,16 @@ The write/read split, UTC-pinned aggregation, and privacy model are unchanged an
 
 ---
 
-## Phase 8 — Goals and conversions (v2)
+## Phase 8: Goals and conversions (v2)
 
-Goal: a site owner defines a goal for a site — either a target path (e.g. `/thank-you`)
+Goal: a site owner defines a goal for a site, either a target path (e.g. `/thank-you`)
 or a named custom event that already exists in the repo. The aggregation job counts goal
 completions per (site, goal, UTC day) into a dedicated rollup, and the dashboard shows a
 goals panel listing each goal with its completions and a conversion rate over the selected
 range.
 
 The three invariants are unchanged and non-negotiable: the write/read split (ingestion
-writes raw, dashboards read rollups only — `lib/stats/queries.ts` never touches a raw
+writes raw, dashboards read rollups only, `lib/stats/queries.ts` never touches a raw
 table), the UTC-pinned recompute-and-overwrite aggregation, and the privacy model (no IP
 ever stored; goals add no new personal-data path). Goals reuse the existing pageview and
 custom-event plumbing rather than adding a new collection path: a `path` goal is matched
@@ -239,7 +239,7 @@ no snippet change.
 
 For a range, a goal's `completions` is the summed daily completion count over the range,
 and its `conversionRate` is `completions / visitors` where `visitors` is the range's summed
-daily unique visitors — the exact figure `/api/stats/summary` already returns for the site.
+daily unique visitors, the exact figure `/api/stats/summary` already returns for the site.
 The rate is returned as a fraction (0..n) and rendered as a percentage. Because completions
 are total occurrences (a visitor may complete a repeatable goal more than once) and visitors
 is unique-per-day summed, the rate is "completions per visitor" and can exceed 100% for
@@ -254,7 +254,7 @@ day, summed" caption. `visitors = 0` yields a rate of 0.
   never edited; this is a fix-forward migration.
 - Goal validation is hand-rolled in `lib/goals/validate.ts` (no schema library): `kind`
   whitelist, `name` non-empty/max 80, and `match_value` validated by reusing the existing
-  ingest validators — `normalizePath` for `path` goals, `EVENT_NAME_PATTERN` for `event`
+  ingest validators: `normalizePath` for `path` goals, `EVENT_NAME_PATTERN` for `event`
   goals.
 - Goal CRUD over `/api/goals` (session-guarded, re-checked in each handler, added to the
   middleware matcher): `GET ?site=` lists a site's goals, `POST` registers one (`409` on a
@@ -275,11 +275,11 @@ day, summed" caption. `visitors = 0` yields a rate of 0.
   the other panels. Managing goals (register/delete) is via the `/api/goals` API, documented
   in the README.
 
-### Definition of done — tests
+### Definition of done: tests
 - Unit: goal validation (good path/event goals; bad kind; empty/over-length name; bad path;
-  bad event name; non-string inputs); conversion-rate math (zero visitors → 0, exact
+  bad event name; non-string inputs); conversion-rate math (zero visitors gives 0, exact
   fraction, repeatable goal > 100%).
-- Integration: goal CRUD (create, list by site, duplicate → 409, delete → 204 and cascade);
+- Integration: goal CRUD (create, list by site, duplicate -> 409, delete -> 204 and cascade);
   the job counts a `path` goal by `event_raw.path` and an `event` goal by
   `custom_event_raw.name`, is byte-identical across two runs, and a goal registered after
   events still counts completions still inside the retention window; the stats endpoint
