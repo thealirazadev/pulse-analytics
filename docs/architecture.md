@@ -8,11 +8,11 @@ The system is three decoupled paths. The write path is dumb and cheap, the read 
 
 1. The tracked site loads `public/p.js` (the snippet) with a `data-site` attribute carrying the site's public ID.
 2. On page load and on SPA route changes, the snippet sends `POST /api/collect` via `navigator.sendBeacon` (fallback `fetch` with `keepalive`). The body is JSON in a `text/plain` request so the browser sends it without a CORS preflight. If DNT or GPC is enabled, the snippet sends nothing.
-3. The route handler, in order: rejects bodies over 1 KB (`413`); parses and validates the payload (`400`); resolves the site by public ID and checks the request `Origin`/`Referer` host against the registered domain (`403`); drops requests with `DNT: 1`/`Sec-GPC: 1` headers (`202`, nothing stored); applies the per-site rate limit (`429`); classifies the UA into a device class and drops bots (`202`, nothing stored).
+3. The route handler, in order: rejects bodies over 1 KB (`413`); parses and validates the payload (`400`); resolves the site by public ID and checks the request `Origin`/`Referer` host against the registered domain (`403`); drops requests with `DNT: 1`/`Sec-GPC: 1` headers (`202`, nothing stored); applies the per-client and per-site rate limits (`429`); classifies the UA into a device class and drops bots (`202`, nothing stored).
 4. It then reads the client IP from the connection/forwarded header, looks up the country in a local GeoIP database, computes `visitor_hash = sha256(daily_salt || site_id || ip || ua)` using today's UTC salt, and lets the IP go out of scope. The IP is never stored and never logged.
 5. One row is inserted into `event_raw` (ts, path, referrer host, country, device, visitor hash). Response `202`, no body, no `Set-Cookie`.
 
-Custom events share this path. The snippet also exposes `window.pulse('event', '<name>')`, which sends a `{ sid, n }` beacon to the same `POST /api/collect`. The handler runs the identical guards (steps 1-3 and the origin/DNT/rate-limit/bot checks), and because custom events are counts-only it inserts one `custom_event_raw` row (site, ts, name) with no device, country, IP, or visitor hash - the IP is never even read. Invalid names (`^[A-Za-z0-9._-]{1,64}$`) return `400`; the first accepted event of either kind verifies the site.
+Custom events share this path. The snippet also exposes `window.pulse('event', '<name>')`, which sends a `{ sid, n }` beacon to the same `POST /api/collect`. The handler runs the identical guards (steps 1-3 and the origin/DNT/rate-limit/bot checks), and because custom events are counts-only it inserts one `custom_event_raw` row (site, ts, name) with no device, country, IP, or visitor hash - the IP is read only in memory as the per-client rate-limit key. Invalid names (`^[A-Za-z0-9._-]{1,64}$`) return `400`; the first accepted event of either kind verifies the site.
 
 ### Aggregation job (the bridge)
 
@@ -261,7 +261,8 @@ scope. A row therefore carries no device, country, IP, or visitor hash: nothing
 beyond which named event happened, at what UTC instant, for which site. The
 snippet reports one through the `pulse('event', '<name>')` API (see below); the
 collect handler applies the identical guards it uses for pageviews (size, shape,
-site/origin, DNT/GPC, rate limit, bot drop) and never reads the IP. Pruned by
+site/origin, DNT/GPC, rate limit, bot drop) and reads the IP only in memory
+for the per-client rate limit. Pruned by
 the job after 72 hours, like `event_raw`.
 
 ### Rollup tables (read path - dashboards read only these)
@@ -369,7 +370,7 @@ Job algorithm per run: recompute all hourly buckets in `(finalized_through, now]
 ## Where state lives
 
 - **Postgres** - everything durable: sites, salts (today's only), raw events (72 h), rollups, watermark.
-- **Server memory (per process)** - the ingest rate-limit buckets and login-attempt counters. Accepted trade-off for a single-instance self-hosted app: a restart resets limiters (harmless), and multi-instance deployments would need a shared store (out of scope, noted here deliberately).
+- **Server memory (per process)** - the ingest rate-limit buckets (per site, and per client keyed by an HMAC of the IP under a per-process random key, so the raw IP is not retained) and login-attempt counters. Accepted trade-off for a single-instance self-hosted app: a restart resets limiters (harmless), and multi-instance deployments would need a shared store (out of scope, noted here deliberately).
 - **Client (browser of the admin)** - the session cookie (signed, HttpOnly, no server-side session table; the cookie itself is the session) and the theme preference in `localStorage`. Dashboard panel state (selected site, range) lives in the URL (`/dashboard/[siteId]?range=7d`) so views are bookmarkable.
 - **Visitor browsers** - nothing. No cookie, no storage. This line is the product.
 

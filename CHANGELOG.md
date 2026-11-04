@@ -65,3 +65,7 @@ version number and date will be added when the first release is cut.
   the IP is read that many hops from the right. It defaults to `0`, which
   ignores forwarded headers: existing deployments behind a proxy must set it
   (usually to `1`) to keep accurate unique-visitor counts.
+- Ingest is now rate limited per client as well as per site (2 req/s sustained,
+  burst 20), so one abusive client can no longer exhaust a site's bucket and
+  drop legitimate traffic. The client bucket key is an HMAC of the IP under a
+  per-process random key; the IP itself is neither kept nor logged.

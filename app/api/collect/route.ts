@@ -107,8 +107,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return accepted();
     }
 
-    // 6. Per-site rate limit.
-    if (!allowRequest(beacon.sid)) {
+    // 6. Per-client and per-site rate limits. The IP stays in memory.
+    const ip = getClientIp(req.headers, getEnv().TRUSTED_PROXY_HOPS);
+    if (!allowRequest(beacon.sid, ip)) {
       logger.info("ingest_rejected", {
         code: "rate_limited",
         status: 429,
@@ -152,10 +153,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     // leaves this scope.
     const device = classifyDevice(userAgent);
     const referrerHost = reduceReferrer(beacon.referrer, matched.domain);
-    const ip = getClientIp(req.headers, getEnv().TRUSTED_PROXY_HOPS) ?? "";
-    const country = await lookupCountry(ip);
+    const country = await lookupCountry(ip ?? "");
     const salt = await getTodaySalt();
-    const visitorHash = computeVisitorHash(salt, matched.id, ip, userAgent);
+    const visitorHash = computeVisitorHash(salt, matched.id, ip ?? "", userAgent);
 
     await db.insert(eventRaw).values({
       siteId: matched.id,

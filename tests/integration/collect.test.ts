@@ -191,6 +191,24 @@ describe("POST /api/collect", () => {
     expect(sawLimit).toBe(true);
   });
 
+  it("throttles one noisy client without blocking other visitors", async () => {
+    await seedSite();
+    let throttled = 0;
+    for (let i = 0; i < 30; i++) {
+      const res = await POST(collectRequest({ sid: SID, p: "/" }));
+      if (res.status === 429) throttled++;
+    }
+    expect(throttled).toBeGreaterThanOrEqual(5);
+
+    const other = await POST(
+      collectRequest(
+        { sid: SID, p: "/" },
+        { "x-forwarded-for": "198.51.100.4" },
+      ),
+    );
+    expect(other.status).toBe(202);
+  });
+
   it("never writes the ip or raw user agent to logs", async () => {
     await seedSite();
     const lines: string[] = [];

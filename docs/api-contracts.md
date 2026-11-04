@@ -36,7 +36,7 @@ Request body:
 | `p` | yes | Path beginning with `/`, max 512 chars after server-side stripping of query string and fragment |
 | `r` | no | Referrer URL; server keeps the hostname only, drops it if it equals the site's own domain, null if unparsable |
 
-**Custom event beacon.** A named custom event is the same endpoint with a different body - `{ "sid": "pk_x8f2ab31", "n": "signup" }`, where `n` replaces `p`/`r`. `n` must match `^[A-Za-z0-9._-]{1,64}$` (counts only, no properties). Every guard (origin, DNT/GPC drop, per-site rate limit, bot drop) and every response in the table below is identical to a pageview; a bad `n` returns `400 invalid_payload`. The accepted row is written to `custom_event_raw` with no device, country, IP, or visitor hash - the IP is never read for custom events. Emitted from the snippet with `pulse('event', 'signup')`.
+**Custom event beacon.** A named custom event is the same endpoint with a different body - `{ "sid": "pk_x8f2ab31", "n": "signup" }`, where `n` replaces `p`/`r`. `n` must match `^[A-Za-z0-9._-]{1,64}$` (counts only, no properties). Every guard (origin, DNT/GPC drop, per-client and per-site rate limits, bot drop) and every response in the table below is identical to a pageview; a bad `n` returns `400 invalid_payload`. The accepted row is written to `custom_event_raw` with no device, country, IP, or visitor hash - for custom events the IP is used only in memory as the per-client rate-limit key. Emitted from the snippet with `pulse('event', 'signup')`.
 
 Server-derived (never sent by the client): timestamp, device class (from the `User-Agent` header), country (local GeoIP on the connection IP), visitor hash. The IP is discarded after derivation.
 
@@ -49,7 +49,7 @@ Responses (success responses have no body and never set cookies):
 | `400` `invalid_payload` | Malformed JSON, missing/invalid fields | no |
 | `403` `unknown_site` / `origin_mismatch` | `sid` not registered, or `Origin`/`Referer` host does not match the site's domain | no |
 | `413` `payload_too_large` | Body over 1024 bytes | no |
-| `429` `rate_limited` | Per-site token bucket exhausted (sustained 10 req/s, burst 50 - constants in code) | no |
+| `429` `rate_limited` | Per-client token bucket (sustained 2 req/s, burst 20; only when `TRUSTED_PROXY_HOPS` yields a client IP) or per-site token bucket (sustained 10 req/s, burst 50) exhausted - constants in code | no |
 
 Replay note: a byte-identical replayed beacon re-derives the hash from the *replaying* connection's IP/UA at receipt time, so third-party replays look like different visitors and same-source replays are indistinguishable from real repeat pageviews. No event-level dedup is attempted; the rate limit bounds inflation of raw counts, and rollup integrity is unaffected (aggregation recomputes deterministically from whatever raw rows exist).
 

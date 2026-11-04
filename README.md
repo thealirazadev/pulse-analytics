@@ -282,7 +282,8 @@ performed.
 
 **Ingest throughput** - `POST /api/collect` over HTTP, 20,000 requests at
 concurrency 64, spread over 500 registered sites so the per-site rate limiter
-(10/s sustained, burst 50) never engages. Every request returned `202` and was
+(10/s sustained, burst 50) never engages. The run sent no forwarded headers, so
+the per-client limiter (2/s sustained, burst 20) did not apply. Every request returned `202` and was
 stored; there were no throttled or failed requests in any trial.
 
 | Trial | Requests | Concurrency | Result         | Throughput |
