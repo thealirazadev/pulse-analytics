@@ -99,6 +99,30 @@ npm run dev            # http://localhost:3000
 npm run build && npm run start
 ```
 
+### Docker
+
+`docker-compose.yml` runs the whole stack: Postgres 16 (data in the `pgdata`
+volume), a one-shot migration job, and the app built from the multi-stage
+`Dockerfile` (Next.js standalone output, running as the unprivileged `node`
+user).
+
+```bash
+cp .env.example .env   # fill in the secrets, APP_URL and TRUSTED_PROXY_HOPS
+docker compose up -d --build
+```
+
+The app listens on port 3000. Compose overrides `DATABASE_URL` to point at its
+own `db` service; add `POSTGRES_PASSWORD` to `.env` (compose reads it too) to
+change the default database password. Put a TLS-terminating reverse proxy in
+front for production, and set `TRUSTED_PROXY_HOPS=1` when it appends to
+`X-Forwarded-For`. To enable country lookup, mount the `.mmdb` file into the
+`app` service and point `GEOIP_DB_PATH` at its path inside the container. The
+rollup job still needs an external scheduler (see below).
+
+To build only the app image: `docker build -t pulse-analytics .`, then run it
+with `docker run --env-file .env -p 3000:3000 pulse-analytics`. Apply
+migrations first with `npm run db:migrate` or the `migrate` build target.
+
 Log in at `/login`, register a site under `/sites`, copy its snippet into your
 site's `<head>`, and the site flips to verified on the first pageview.
 

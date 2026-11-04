@@ -56,6 +56,8 @@ version number and date will be added when the first release is cut.
 
 - GitHub Actions CI running typecheck, lint, test, and build against a
   `postgres:16` service container; grouped monthly Dependabot updates.
+- Production `Dockerfile` (multi-stage, Next.js standalone output, non-root)
+  and a `docker-compose.yml` with Postgres 16 and a one-shot migration job.
 
 ### Security
 

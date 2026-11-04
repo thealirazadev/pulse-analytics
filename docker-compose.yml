@@ -1,0 +1,52 @@
+# Self-hosted stack: Postgres 16, a one-shot migration job, and the app.
+#
+#   cp .env.example .env   # fill in the secrets, APP_URL, TRUSTED_PROXY_HOPS
+#   docker compose up -d --build
+#
+# DATABASE_URL from .env is overridden here to point at the db service. Put a
+# TLS-terminating reverse proxy in front of port 3000 for production.
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pulse
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pulse}
+      POSTGRES_DB: pulse
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pulse -d pulse"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    build:
+      context: .
+      target: migrate
+    environment:
+      DATABASE_URL: postgres://pulse:${POSTGRES_PASSWORD:-pulse}@db:5432/pulse
+    depends_on:
+      db:
+        condition: service_healthy
+
+  app:
+    build:
+      context: .
+      target: runner
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://pulse:${POSTGRES_PASSWORD:-pulse}@db:5432/pulse
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:
