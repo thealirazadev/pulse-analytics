@@ -251,7 +251,12 @@ from SQL for no benefit here.
 credentials does not justify NextAuth or a session store. `node:crypto`
 supplies scrypt for the password hash, HMAC-SHA-256 for a stateless signed
 session cookie, SHA-256 for visitor hashes, and `randomBytes` for salts. The
-cookie _is_ the session - there is no server-side session table. One
+cookie _is_ the session - there is no server-side session table. Logout still
+revokes it: each token carries its issue time, and the server rejects tokens
+issued before an in-memory cutoff that logout moves to "now". The cutoff starts
+at process start, so restarting the app (which changing the password or
+`SESSION_SECRET` requires anyway) also signs the admin out. That is the
+deliberate trade-off for keeping no session table. One
 consequence worth naming: `middleware.ts` runs on the Edge runtime, which has
 no `node:crypto`, so it performs a presence-only cookie gate; authoritative
 signature and expiry verification happens in every guarded route handler and

@@ -6,14 +6,38 @@ import { SESSION_COOKIE, SESSION_MAX_AGE_SECONDS } from "./constants";
 
 /**
  * The session cookie is a self-contained, HMAC-signed token: base64url(payload)
- * "." hex(signature). No server-side store — the signature and the embedded
- * expiry are the whole session. Tampered or expired tokens verify to null.
+ * "." hex(signature). There is no session table; the signature, the embedded
+ * expiry, and one in-memory cutoff are the whole session. Tampered, expired, or
+ * revoked tokens verify to null.
+ *
+ * Revocation: a token issued before the cutoff is rejected. Logout moves the
+ * cutoff to now, which ends every session (there is one admin). The cutoff
+ * starts at process start, so a restart also ends every session; that is the
+ * price of not keeping server-side state, and it means rotating
+ * ADMIN_PASSWORD_HASH or SESSION_SECRET (both need a restart) always logs
+ * everyone out. Single-instance only, like the rate limiters.
  */
 
 export interface SessionPayload {
   sub: string;
+  iat: number; // epoch milliseconds
   exp: number; // epoch milliseconds
 }
+
+interface RevocationState {
+  validFrom: number;
+}
+
+// Kept on globalThis so every route bundle in the process sees the same cutoff.
+const REVOCATION_KEY = Symbol.for("pulse.sessionRevocation");
+
+const revocation: RevocationState = (() => {
+  const store = globalThis as typeof globalThis & {
+    [REVOCATION_KEY]?: RevocationState;
+  };
+  store[REVOCATION_KEY] ??= { validFrom: Date.now() };
+  return store[REVOCATION_KEY];
+})();
 
 function sign(body: string): string {
   return createHmac("sha256", getEnv().SESSION_SECRET).update(body).digest("hex");
@@ -34,6 +58,9 @@ export function createSession(
 ): string {
   const payload: SessionPayload = {
     sub,
+    // Never before the cutoff, so a login in the same millisecond as a logout
+    // still yields a working session.
+    iat: Math.max(now, revocation.validFrom),
     exp: now + SESSION_MAX_AGE_SECONDS * 1000,
   };
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
@@ -58,11 +85,21 @@ export function verifySession(
   } catch {
     return null;
   }
-  if (typeof payload.sub !== "string" || typeof payload.exp !== "number") {
+  if (
+    typeof payload.sub !== "string" ||
+    typeof payload.iat !== "number" ||
+    typeof payload.exp !== "number"
+  ) {
     return null;
   }
   if (now >= payload.exp) return null;
+  if (payload.iat < revocation.validFrom) return null;
   return payload;
+}
+
+/** Invalidate every session issued up to and including `now` (used by logout). */
+export function revokeSessions(now: number = Date.now()): void {
+  revocation.validFrom = Math.max(revocation.validFrom, now) + 1;
 }
 
 /** Read and verify the session from a route handler's request. */

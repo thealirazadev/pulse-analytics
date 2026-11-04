@@ -1,5 +1,11 @@
+import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { createSession, verifySession } from "@/lib/auth/session";
+import {
+  createSession,
+  revokeSessions,
+  verifySession,
+} from "@/lib/auth/session";
+import { getEnv } from "@/lib/env";
 
 // SESSION_SECRET is provided by tests/setup.ts via .env.
 
@@ -34,5 +40,25 @@ describe("session cookie", () => {
     expect(verifySession("")).toBeNull();
     expect(verifySession("no-dot-here")).toBeNull();
     expect(verifySession(".")).toBeNull();
+  });
+
+  it("rejects tokens issued before a revocation and accepts newer ones", () => {
+    const now = Date.now();
+    const before = createSession("admin@example.com", now);
+    revokeSessions(now);
+    expect(verifySession(before, now)).toBeNull();
+
+    const sameMs = createSession("admin@example.com", now);
+    expect(verifySession(sameMs, now)?.sub).toBe("admin@example.com");
+  });
+
+  it("rejects a correctly signed token that has no issue time", () => {
+    const body = Buffer.from(
+      JSON.stringify({ sub: "admin@example.com", exp: Date.now() + 60_000 }),
+    ).toString("base64url");
+    const sig = createHmac("sha256", getEnv().SESSION_SECRET)
+      .update(body)
+      .digest("hex");
+    expect(verifySession(`${body}.${sig}`)).toBeNull();
   });
 });

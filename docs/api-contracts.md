@@ -65,13 +65,13 @@ Public, rate-limited (5 attempts/min per source; the limiter key is held in memo
 { "email": "admin@example.com", "password": "correct horse battery staple" }
 ```
 
-- `204` - credentials match `ADMIN_EMAIL` + `ADMIN_PASSWORD_HASH` (scrypt). Sets `pulse_session`: HttpOnly, SameSite=Lax, Path=/, Secure in production, HMAC-signed payload `{ sub, exp }`, 7-day expiry.
+- `204` - credentials match `ADMIN_EMAIL` + `ADMIN_PASSWORD_HASH` (scrypt). Sets `pulse_session`: HttpOnly, SameSite=Lax, Path=/, Secure in production, HMAC-signed payload `{ sub, iat, exp }`, 7-day expiry.
 - `401` `invalid_credentials` - either field wrong (response does not say which).
 - `429` `rate_limited`.
 
 ### POST /api/auth/logout
 
-Session cookie required. `204`; clears the cookie. (`401` if absent/invalid.)
+Session cookie required. `204`; clears the cookie and revokes every session issued so far, so a copied cookie stops working too. (`401` if absent/invalid.)
 
 ---
 

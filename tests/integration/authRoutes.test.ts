@@ -5,7 +5,7 @@ import { POST as logout } from "@/app/api/auth/logout/route";
 import { SESSION_COOKIE } from "@/lib/auth/constants";
 import { resetLoginLimits } from "@/lib/auth/loginLimit";
 import { hashPassword } from "@/lib/auth/password";
-import { createSession } from "@/lib/auth/session";
+import { createSession, verifySession } from "@/lib/auth/session";
 import { resetEnvCache } from "@/lib/env";
 
 const EMAIL = "admin@example.com";
@@ -99,6 +99,32 @@ describe("auth routes", () => {
     const cookie = res.headers.get("set-cookie") ?? "";
     expect(cookie).toContain(`${SESSION_COOKIE}=`);
     expect(cookie.toLowerCase()).toMatch(/max-age=0|expires=/);
+  });
+
+  it("logout invalidates the old session token", async () => {
+    const token = createSession(EMAIL);
+    const cookie = `${SESSION_COOKIE}=${token}`;
+    const res = await logout(
+      new NextRequest("http://localhost:3000/api/auth/logout", {
+        method: "POST",
+        headers: { cookie },
+      }),
+    );
+    expect(res.status).toBe(204);
+    expect(verifySession(token)).toBeNull();
+
+    const replay = await logout(
+      new NextRequest("http://localhost:3000/api/auth/logout", {
+        method: "POST",
+        headers: { cookie },
+      }),
+    );
+    expect(replay.status).toBe(401);
+
+    const fresh = await login(
+      loginRequest({ email: EMAIL, password: PASSWORD }),
+    );
+    expect(fresh.status).toBe(204);
   });
 
   it("logout without a valid session returns 401", async () => {

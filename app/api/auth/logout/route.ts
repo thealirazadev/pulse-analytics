@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE } from "@/lib/auth/constants";
-import { readRequestSession } from "@/lib/auth/session";
+import { readRequestSession, revokeSessions } from "@/lib/auth/session";
 import { isProductionUrl } from "@/lib/env";
 import { apiError } from "@/lib/errors";
 
@@ -11,6 +11,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return apiError("unauthorized");
   }
 
+  revokeSessions();
   const res = new NextResponse(null, { status: 204 });
   res.cookies.set(SESSION_COOKIE, "", {
     httpOnly: true,

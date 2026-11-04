@@ -371,7 +371,7 @@ Job algorithm per run: recompute all hourly buckets in `(finalized_through, now]
 
 - **Postgres** - everything durable: sites, salts (today's only), raw events (72 h), rollups, watermark.
 - **Server memory (per process)** - the ingest rate-limit buckets (per site, and per client keyed by an HMAC of the IP under a per-process random key, so the raw IP is not retained) and login-attempt counters. Accepted trade-off for a single-instance self-hosted app: a restart resets limiters (harmless), and multi-instance deployments would need a shared store (out of scope, noted here deliberately).
-- **Client (browser of the admin)** - the session cookie (signed, HttpOnly, no server-side session table; the cookie itself is the session) and the theme preference in `localStorage`. Dashboard panel state (selected site, range) lives in the URL (`/dashboard/[siteId]?range=7d`) so views are bookmarkable.
+- **Client (browser of the admin)** - the session cookie (signed, HttpOnly, no server-side session table; the cookie itself is the session, checked against one in-memory "valid from" cutoff that logout and process start move forward) and the theme preference in `localStorage`. Dashboard panel state (selected site, range) lives in the URL (`/dashboard/[siteId]?range=7d`) so views are bookmarkable.
 - **Visitor browsers** - nothing. No cookie, no storage. This line is the product.
 
 ## External dependencies

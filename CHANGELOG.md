@@ -69,3 +69,7 @@ version number and date will be added when the first release is cut.
   burst 20), so one abusive client can no longer exhaust a site's bucket and
   drop legitimate traffic. The client bucket key is an HMAC of the IP under a
   per-process random key; the IP itself is neither kept nor logged.
+- Logout now revokes the session instead of only clearing the cookie, so a
+  copied cookie stops working. Tokens carry an issue time and are rejected when
+  older than an in-memory cutoff that logout and process start move forward.
+  Restarting the app (including after a password change) signs the admin out.
