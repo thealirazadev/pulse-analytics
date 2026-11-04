@@ -13,6 +13,11 @@ export interface Env {
   /** Empty string disables geo lookup; everything else must be an absolute path. */
   GEOIP_DB_PATH: string;
   APP_URL: string;
+  /**
+   * Number of reverse proxies in front of the app that append to
+   * X-Forwarded-For. 0 (the default) means forwarded headers are ignored.
+   */
+  TRUSTED_PROXY_HOPS: number;
 }
 
 const REQUIRED: Array<keyof Env> = [
@@ -44,6 +49,13 @@ export function getEnv(): Env {
     );
   }
 
+  const hopsRaw = process.env.TRUSTED_PROXY_HOPS?.trim() || "0";
+  if (!/^\d{1,2}$/.test(hopsRaw)) {
+    throw new Error(
+      `TRUSTED_PROXY_HOPS must be a non-negative integer, got "${hopsRaw}".`,
+    );
+  }
+
   cached = {
     DATABASE_URL: process.env.DATABASE_URL as string,
     SESSION_SECRET: process.env.SESSION_SECRET as string,
@@ -52,6 +64,7 @@ export function getEnv(): Env {
     CRON_SECRET: process.env.CRON_SECRET as string,
     GEOIP_DB_PATH: process.env.GEOIP_DB_PATH ?? "",
     APP_URL: process.env.APP_URL as string,
+    TRUSTED_PROXY_HOPS: Number(hopsRaw),
   };
 
   return cached;

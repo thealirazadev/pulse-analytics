@@ -12,6 +12,7 @@ import {
 import { POST } from "@/app/api/collect/route";
 import { getDb } from "@/lib/db/client";
 import { eventRaw, site } from "@/lib/db/schema";
+import { resetEnvCache } from "@/lib/env";
 import { resetRateLimits } from "@/lib/ingest/rateLimit";
 import { closeDb, ensureMigrated, truncateAll } from "../helpers/db";
 
@@ -53,12 +54,20 @@ async function eventCount(): Promise<number> {
 }
 
 describe("POST /api/collect", () => {
-  beforeAll(ensureMigrated);
+  beforeAll(async () => {
+    process.env.TRUSTED_PROXY_HOPS = "1";
+    resetEnvCache();
+    await ensureMigrated();
+  });
   beforeEach(async () => {
     await truncateAll();
     resetRateLimits();
   });
-  afterAll(closeDb);
+  afterAll(async () => {
+    delete process.env.TRUSTED_PROXY_HOPS;
+    resetEnvCache();
+    await closeDb();
+  });
 
   it("accepts a valid beacon and stores exactly one row", async () => {
     const siteId = await seedSite();
@@ -153,6 +162,20 @@ describe("POST /api/collect", () => {
     );
     expect(res.status).toBe(202);
     expect(await eventCount()).toBe(0);
+  });
+
+  it("derives the visitor hash from the proxy-appended hop, not a spoofed prefix", async () => {
+    await seedSite();
+    await POST(collectRequest({ sid: SID, p: "/" }));
+    await POST(
+      collectRequest(
+        { sid: SID, p: "/" },
+        { "x-forwarded-for": `198.51.100.9, ${CLIENT_IP}` },
+      ),
+    );
+    const rows = await getDb().select().from(eventRaw);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.visitorHash).toBe(rows[1]!.visitorHash);
   });
 
   it("rate limits sustained traffic with 429", async () => {

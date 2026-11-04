@@ -78,6 +78,12 @@ Fill in `.env`:
 - `APP_URL` - the public base URL (`http://localhost:3000` in dev)
 - `GEOIP_DB_PATH` - optional absolute path to a MaxMind GeoLite2-Country.mmdb;
   leave empty to disable country resolution (countries show as "Unknown")
+- `TRUSTED_PROXY_HOPS` - how many reverse proxies sit in front of the app and
+  append to `X-Forwarded-For` (usually `1`). The client IP is taken from that
+  many hops from the right of the header, so a client-supplied prefix is
+  ignored. The default `0` ignores forwarded headers entirely; set it for any
+  real deployment, or unique visitors collapse to one per user agent and the
+  login attempt limiter is shared by everyone
 
 Apply the database schema:
 

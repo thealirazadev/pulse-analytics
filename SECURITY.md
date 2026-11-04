@@ -75,10 +75,12 @@ pulse-analytics expects the operator to:
   generate them with a CSPRNG (`openssl rand -hex 32`);
 - serve the app over HTTPS in production, so `APP_URL` is `https://` and the
   session cookie is issued with `Secure`;
-- run behind a reverse proxy that sets a trustworthy `X-Forwarded-For`. The
-  client IP is read from that header; a proxy that passes through a
-  client-supplied value lets a caller influence the geo lookup, the visitor
-  hash, and the login attempt limiter;
+- run behind a reverse proxy that appends the client address to
+  `X-Forwarded-For`, and set `TRUSTED_PROXY_HOPS` to the number of such proxies.
+  The client IP is read from that many hops from the right of the header, so a
+  client-supplied prefix cannot influence the geo lookup, the visitor hash, or
+  the login attempt limiter. Setting the value higher than the real number of
+  proxies lets a caller pick their own address again;
 - run the rollup cron. Salt destruction and raw-event pruning are part of that
   job, so a stopped scheduler means old salts and raw events are retained
   longer than intended.

@@ -4,17 +4,12 @@ import { SESSION_COOKIE, SESSION_MAX_AGE_SECONDS } from "@/lib/auth/constants";
 import { allowLogin } from "@/lib/auth/loginLimit";
 import { verifyPassword } from "@/lib/auth/password";
 import { createSession } from "@/lib/auth/session";
+import { getClientIp } from "@/lib/clientIp";
 import { getEnv, isProductionUrl } from "@/lib/env";
 import { apiError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
-
-function sourceKey(req: NextRequest): string {
-  const forwarded = req.headers.get("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0]?.trim() || "unknown";
-  return req.headers.get("x-real-ip")?.trim() || "unknown";
-}
 
 function safeStringEqual(a: string, b: string): boolean {
   const ab = Buffer.from(a);
@@ -23,7 +18,9 @@ function safeStringEqual(a: string, b: string): boolean {
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  if (!allowLogin(sourceKey(req))) {
+  const env = getEnv();
+  const source = getClientIp(req.headers, env.TRUSTED_PROXY_HOPS) ?? "unknown";
+  if (!allowLogin(source)) {
     return apiError("rate_limited");
   }
 
@@ -38,7 +35,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const email = typeof record.email === "string" ? record.email : "";
   const password = typeof record.password === "string" ? record.password : "";
 
-  const env = getEnv();
   // Evaluate both factors regardless so the response cannot reveal which field
   // was wrong (and to keep timing uniform).
   const emailOk = safeStringEqual(email, env.ADMIN_EMAIL);

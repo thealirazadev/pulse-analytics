@@ -17,6 +17,7 @@ describe("getEnv", () => {
     resetEnvCache();
     for (const key of Object.keys(REQUIRED)) delete process.env[key];
     delete process.env.GEOIP_DB_PATH;
+    delete process.env.TRUSTED_PROXY_HOPS;
   });
 
   afterEach(() => {
@@ -30,6 +31,20 @@ describe("getEnv", () => {
     expect(env.DATABASE_URL).toBe(REQUIRED.DATABASE_URL);
     expect(env.APP_URL).toBe(REQUIRED.APP_URL);
     expect(env.GEOIP_DB_PATH).toBe("");
+    expect(env.TRUSTED_PROXY_HOPS).toBe(0);
+  });
+
+  it("parses TRUSTED_PROXY_HOPS and rejects invalid values", () => {
+    Object.assign(process.env, REQUIRED, { TRUSTED_PROXY_HOPS: "2" });
+    expect(getEnv().TRUSTED_PROXY_HOPS).toBe(2);
+
+    resetEnvCache();
+    process.env.TRUSTED_PROXY_HOPS = "-1";
+    expect(() => getEnv()).toThrow(/TRUSTED_PROXY_HOPS/);
+
+    resetEnvCache();
+    process.env.TRUSTED_PROXY_HOPS = "yes";
+    expect(() => getEnv()).toThrow(/TRUSTED_PROXY_HOPS/);
   });
 
   it("fails fast naming every missing required variable", () => {

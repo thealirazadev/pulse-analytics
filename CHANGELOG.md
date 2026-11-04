@@ -56,3 +56,12 @@ version number and date will be added when the first release is cut.
 
 - GitHub Actions CI running typecheck, lint, test, and build against a
   `postgres:16` service container; grouped monthly Dependabot updates.
+
+### Security
+
+- The client IP is no longer taken from the left-most `X-Forwarded-For` entry,
+  which any client could spoof to dodge the login limiter or skew visitor
+  hashes. A new `TRUSTED_PROXY_HOPS` setting says how many proxies to trust and
+  the IP is read that many hops from the right. It defaults to `0`, which
+  ignores forwarded headers: existing deployments behind a proxy must set it
+  (usually to `1`) to keep accurate unique-visitor counts.

@@ -1,8 +1,10 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { NextResponse, type NextRequest } from "next/server";
+import { getClientIp } from "@/lib/clientIp";
 import { getDb } from "@/lib/db/client";
 import type { Database } from "@/lib/db/client";
 import { customEventRaw, eventRaw, site } from "@/lib/db/schema";
+import { getEnv } from "@/lib/env";
 import { apiError } from "@/lib/errors";
 import { classifyDevice, isBot } from "@/lib/ingest/device";
 import { lookupCountry } from "@/lib/ingest/geo";
@@ -32,16 +34,6 @@ async function markVerified(
     .update(site)
     .set({ verifiedAt: new Date() })
     .where(and(eq(site.id, siteId), isNull(site.verifiedAt)));
-}
-
-/** Best-effort client IP from proxy headers; only used in-memory, never stored. */
-function extractClientIp(req: NextRequest): string {
-  const forwarded = req.headers.get("x-forwarded-for");
-  if (forwarded) {
-    const first = forwarded.split(",")[0]?.trim();
-    if (first) return first;
-  }
-  return req.headers.get("x-real-ip")?.trim() ?? "";
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
@@ -160,7 +152,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     // leaves this scope.
     const device = classifyDevice(userAgent);
     const referrerHost = reduceReferrer(beacon.referrer, matched.domain);
-    const ip = extractClientIp(req);
+    const ip = getClientIp(req.headers, getEnv().TRUSTED_PROXY_HOPS) ?? "";
     const country = await lookupCountry(ip);
     const salt = await getTodaySalt();
     const visitorHash = computeVisitorHash(salt, matched.id, ip, userAgent);

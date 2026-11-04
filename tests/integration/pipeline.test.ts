@@ -7,6 +7,7 @@ import { SESSION_COOKIE } from "@/lib/auth/constants";
 import { createSession } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
 import { site } from "@/lib/db/schema";
+import { resetEnvCache } from "@/lib/env";
 import { resetRateLimits } from "@/lib/ingest/rateLimit";
 import { runRollup } from "@/lib/rollup/job";
 import { closeDb, ensureMigrated, truncateAll } from "../helpers/db";
@@ -40,7 +41,12 @@ function statsReq(path: string): NextRequest {
 }
 
 describe("full pipeline: ingest -> rollup -> stats", () => {
-  beforeAll(ensureMigrated);
+  beforeAll(async () => {
+    // Beacons arrive through one reverse proxy that sets X-Forwarded-For.
+    process.env.TRUSTED_PROXY_HOPS = "1";
+    resetEnvCache();
+    await ensureMigrated();
+  });
   beforeEach(async () => {
     await truncateAll();
     resetRateLimits();
@@ -48,7 +54,11 @@ describe("full pipeline: ingest -> rollup -> stats", () => {
       .insert(site)
       .values({ publicId: SID, domain: DOMAIN, name: "Ex" });
   });
-  afterAll(closeDb);
+  afterAll(async () => {
+    delete process.env.TRUSTED_PROXY_HOPS;
+    resetEnvCache();
+    await closeDb();
+  });
 
   it("aggregates ingested beacons into the stats the dashboard reads", async () => {
     // visitor A (ip .10) hits "/" three times; visitor B (ip .20) hits "/pricing" twice

@@ -28,6 +28,7 @@ function loginRequest(
 
 describe("auth routes", () => {
   beforeAll(() => {
+    process.env.TRUSTED_PROXY_HOPS = "1";
     process.env.ADMIN_EMAIL = EMAIL;
     process.env.ADMIN_PASSWORD_HASH = hashPassword(PASSWORD);
     resetEnvCache();
@@ -68,6 +69,20 @@ describe("auth routes", () => {
     let last = 200;
     for (let i = 0; i < 6; i++) {
       const res = await login(loginRequest({ email: EMAIL, password: "x" }));
+      last = res.status;
+    }
+    expect(last).toBe(429);
+  });
+
+  it("does not let a spoofed x-forwarded-for prefix bypass the limiter", async () => {
+    let last = 200;
+    for (let i = 0; i < 6; i++) {
+      const res = await login(
+        loginRequest(
+          { email: EMAIL, password: "x" },
+          { "x-forwarded-for": `198.51.100.${i}, 10.0.0.1` },
+        ),
+      );
       last = res.status;
     }
     expect(last).toBe(429);

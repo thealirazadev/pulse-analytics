@@ -391,5 +391,6 @@ Job algorithm per run: recompute all hourly buckets in `(finalized_through, now]
 | `CRON_SECRET` | Server-only | Bearer token required by `POST /api/jobs/rollup` |
 | `GEOIP_DB_PATH` | Server-only | Absolute path to GeoLite2-Country.mmdb; empty disables geo lookup |
 | `APP_URL` | Server-only | Public base URL of this deployment; used to render the snippet src and to enforce Secure cookies in production |
+| `TRUSTED_PROXY_HOPS` | Server-only | Optional, default `0`. Number of reverse proxies that append to `X-Forwarded-For`; the client IP is read that many hops from the right. `0` ignores forwarded headers |
 
 No `NEXT_PUBLIC_` variables are needed. All env access goes through `lib/env.ts`, which validates at startup and fails fast with a clear message. See `.env.example`.
