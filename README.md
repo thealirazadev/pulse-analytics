@@ -52,7 +52,7 @@ These are genuine captures of the running app reading a seeded demo database
 
 ## Prerequisites
 
-- Node.js 20+ (developed on Node 24)
+- Node.js 22.9+ (developed on Node 24)
 - A PostgreSQL 16 database. For local development, run one with Docker:
 
 ```bash
