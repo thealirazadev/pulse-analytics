@@ -14,7 +14,7 @@ Pure logic, no network, no database:
 - **Snippet budget:** read `public/p.js`, assert `<= 1536` bytes.
 
 ### Integration tests - Vitest against a real Postgres
-The rollup SQL and salt lifecycle cannot be meaningfully tested against mocks. These tests run migrations into a disposable database (`TEST_DATABASE_URL`, default `postgres://localhost:5432/pulse_test`), seed raw events with hand-built timestamps, and assert:
+The rollup SQL and salt lifecycle cannot be meaningfully tested against mocks. These tests run migrations into a disposable database (`TEST_DATABASE_URL`, default `postgres://pulse:pulse@localhost:5432/pulse_test`, never `DATABASE_URL`), seed raw events with hand-built timestamps, and assert:
 
 - Salt get-or-create is race-safe (two concurrent calls, one row) and destruction leaves only today.
 - Job idempotency: run twice, rollup rows byte-identical.

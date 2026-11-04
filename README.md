@@ -189,7 +189,8 @@ expired daily salts.
 
 Unit, component, and integration tests run with Vitest. Integration tests need a
 reachable Postgres - create a disposable test database and point
-`TEST_DATABASE_URL` at it (default `postgres://localhost:5432/pulse_test`):
+`TEST_DATABASE_URL` at it (default `postgres://pulse:pulse@localhost:5432/pulse_test`).
+Tests never fall back to `DATABASE_URL`, because they truncate every table:
 
 ```bash
 docker exec pulse-pg psql -U pulse -d pulse -c "CREATE DATABASE pulse_test;"

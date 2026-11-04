@@ -8,8 +8,10 @@ try {
   // no .env file present; rely on process env
 }
 
-// Integration tests must never touch the dev database. Point the app's DB
-// client at the disposable test database for the whole test process.
-if (process.env.TEST_DATABASE_URL) {
-  process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
-}
+// Integration tests must never touch the dev database: they truncate every
+// table. Point the app's DB client at the disposable test database for the
+// whole test process, falling back to the documented default rather than to
+// DATABASE_URL.
+process.env.DATABASE_URL =
+  process.env.TEST_DATABASE_URL ||
+  "postgres://pulse:pulse@localhost:5432/pulse_test";
