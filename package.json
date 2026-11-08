@@ -19,7 +19,7 @@
   "dependencies": {
     "drizzle-orm": "0.45.2",
     "maxmind": "5.0.6",
-    "next": "15.5.25",
+    "next": "15.5.29",
     "postgres": "3.4.9",
     "react": "19.2.7",
     "react-dom": "19.2.7",
@@ -39,7 +39,7 @@
     "autoprefixer": "10.4.27",
     "drizzle-kit": "0.31.10",
     "eslint": "9.39.5",
-    "eslint-config-next": "15.5.20",
+    "eslint-config-next": "15.5.29",
     "jsdom": "25.0.1",
     "postcss": "8.5.23",
     "prettier": "3.9.5",
