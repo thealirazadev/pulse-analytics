@@ -18,5 +18,10 @@ export default defineConfig({
     // Integration tests share one Postgres database and truncate between cases,
     // so test files must not run concurrently or they would wipe each other.
     fileParallelism: false,
+    coverage: {
+      provider: "v8",
+      include: ["lib/**", "app/api/**"],
+      thresholds: { lines: 85, statements: 85 },
+    },
   },
 });
