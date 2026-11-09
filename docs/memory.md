@@ -76,3 +76,12 @@ Running log of what is done, what is in flight, and decisions worth remembering.
 - 2026-07-27: Conversion rate = `completions / visitors` where `visitors` is the range's summed daily unique visitors (the same figure the summary tiles show), returned as a fraction and rendered as a percentage. Reason: it is fully computable from rollups, agrees with the visitor figure users already see, and needs no cross-day dedup (which the privacy model forbids). It can exceed 100% for a repeatable goal (a visitor may complete it more than once); the panel labels the denominator ("visitors: unique per day, summed") rather than hiding the caveat. Zero visitors yields 0 (no divide-by-zero).
 - 2026-07-27: Goals are addressed by their numeric id in the API, not a public id like sites. Reason: the site public id exists because the snippet embeds it on public pages; goals have no public surface (managed only through the session-guarded `/api/goals` by the single admin), so a numeric id leaks nothing and avoids inventing a second id scheme (KISS).
 - 2026-07-27: The dashboard ships a read-only Goals panel; goal creation/deletion is via the `/api/goals` API (documented in the README), not a bespoke management page. Reason: the v2 scope named the panel (completions + conversion rate) as the UI deliverable and the CRUD as an API; a full management UI would be scope beyond that. A follow-up could add an in-dashboard goal manager if the owner wants one.
+
+- 2026-11-09 - End-to-end check against a real Postgres with the production build: login, site
+  creation, beacons with real desktop/mobile user agents, a referrer, the site's own domain as
+  referrer, a custom event, a Googlebot UA, `DNT: 1`, a foreign Origin, malformed and oversized
+  bodies. Stored rows matched the contract (query and fragment stripped, own-domain referrer
+  dropped, bot and DNT dropped, no IP or UA column, no Set-Cookie); the rollup job (401
+  without the secret) produced exact summary, page, referrer, device, and event stats, and a
+  re-run changed nothing. The architecture flag about `event_raw_ts_idx` is resolved: the doc
+  lists it. Added a coverage gate (lib and api routes, 85 percent lines; currently 86).
