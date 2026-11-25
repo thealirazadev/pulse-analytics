@@ -183,7 +183,8 @@ running production server, so run it locally with `npm run test:e2e`.
 ## Design decisions
 
 The trade-offs that shaped this codebase, and the alternatives that were
-considered and rejected.
+considered and rejected. [docs/decisions.md](docs/decisions.md) has the full
+list, including the bugs found along the way.
 
 **Dashboards read rollups only, never raw events.** The system is three
 decoupled paths: the write path is dumb and cheap, the read path is dumb and
