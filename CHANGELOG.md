@@ -45,6 +45,13 @@ version number and date will be added when the first release is cut.
   focus states, keyboard-operable pickers and dialog, skip link, reduced-motion
   handling), and styled 404 and error pages.
 
+### Fixed
+
+- The rollup job no longer prunes raw rows on a UTC day it has not finished.
+  After a gap longer than about six days, a catch-up run used to delete the
+  rest of the day it stopped in, and the next run overwrote that day's daily
+  rollups with a partial count and lost its remaining hours.
+
 ### Documentation
 
 - README with setup, run, and test instructions, design-decision rationale, and

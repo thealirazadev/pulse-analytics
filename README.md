@@ -152,8 +152,8 @@ The dashboard is only as fresh as the last rollup run. Schedule a call every
 ```
 
 The job is idempotent and catch-up safe: it recomputes from the watermark to now,
-so missed runs self-heal. It also prunes raw events past 72 hours and destroys
-expired daily salts.
+so missed runs self-heal. It also prunes raw events past 72 hours on days it has
+finished and destroys expired daily salts.
 
 ## Test
 
