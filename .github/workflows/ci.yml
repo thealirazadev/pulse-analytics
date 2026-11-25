@@ -6,6 +6,13 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # The Playwright e2e smoke test is deliberately out of scope here: it needs a
   # browser download and a production server on top of the database, which makes
@@ -13,6 +20,7 @@ jobs:
   check:
     name: typecheck, lint, test, build
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     services:
       postgres:
