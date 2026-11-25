@@ -163,4 +163,23 @@ describe("goal rollup", () => {
     summary(await runRollup(NOW));
     expect(await completions()).toEqual({ "Thank you": 2 });
   });
+
+  it("does not backfill a new goal into days the job has already finished", async () => {
+    const s = await seedSite();
+    // Steady state: an earlier run has finalized everything up to this hour.
+    await getSql()`INSERT INTO rollup_watermark (id, finalized_through) VALUES (1, ${new Date(
+      "2026-05-15T12:00:00Z",
+    ).toISOString()}::timestamptz)`;
+    await addPageview(s, "2026-05-14T10:00:00Z", "/thank-you");
+    await addPageview(s, "2026-05-15T09:00:00Z", "/thank-you");
+    await addGoal(s, "path", "Thank you", "/thank-you");
+
+    summary(await runRollup(NOW));
+
+    const days = await getSql()`
+      SELECT day::text AS day, completions FROM rollup_goal_daily ORDER BY day`;
+    expect(days.map((r) => [r.day, Number(r.completions)])).toEqual([
+      ["2026-05-15", 1],
+    ]);
+  });
 });

@@ -337,8 +337,10 @@ site-scoped reads, matching every other rollup table. Like custom events, comple
 occurrence counts only; a repeatable goal can be completed more than once by the same
 visitor, and there is no distinct-visitor figure (an `event` goal has no visitor hash at all).
 Recompute needs no new raw table and adds no prune step: goals derive entirely from the two
-existing raw streams, which are already pruned at 72 hours. The catch-up horizon is therefore
-the same 72 hours, so a goal registered now only counts completions still inside that window.
+existing raw streams, which are already pruned at 72 hours. A new goal is not backfilled: the
+job only recomputes the UTC days its pending hours touch, which in normal running is just the
+current day. A goal registered now therefore counts completions from the start of the current
+UTC day; earlier days keep no row for it even while their raw rows are still on hand.
 
 The dashboard's "Goals" panel reads `GET /api/stats/goals`, which lists each goal with its
 summed completions over the range and a conversion rate. The conversion rate is

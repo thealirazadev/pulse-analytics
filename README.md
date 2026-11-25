@@ -139,8 +139,9 @@ change. The conversion rate is `completions / visitors`, where `visitors` is the
 range's summed daily unique visitors (the same figure the summary tiles show).
 Because completions are total occurrences and visitors is unique-per-day summed,
 the rate is "completions per visitor" and can exceed 100% for a repeatable goal.
-Completions appear after the next rollup run; the catch-up horizon is the same
-72 hours as raw retention, so a goal only counts completions still in that window.
+Completions appear after the next rollup run. A new goal is not backfilled: the
+job only recomputes the days it is processing, which in normal running is the
+current UTC day, so a goal counts that day's earlier events but not older days.
 
 ### Scheduling the aggregation job
 
