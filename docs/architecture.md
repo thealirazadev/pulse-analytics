@@ -18,8 +18,8 @@ Custom events share this path. The snippet also exposes `window.pulse('event', '
 
 6. A scheduler (system cron, a container cron sidecar, or a platform cron) calls `POST /api/jobs/rollup` every 5 minutes with `Authorization: Bearer $CRON_SECRET`.
 7. The job recomputes every hourly bucket from `rollup_watermark.finalized_through` up to and including the current partial hour, straight from `event_raw`, and upserts the results (overwrite, never increment). It then recomputes the daily tables for every UTC day touched by those hours, including `rollup_custom_event_daily` from `custom_event_raw` and `rollup_goal_daily` (goal completions matched from `event_raw`/`custom_event_raw`), in the same per-day transaction. Recompute-and-overwrite is the idempotency mechanism: running the job twice, or re-covering an hour after a crash, always converges to the same rows.
-8. The watermark advances past an hour only once the hour has been over for a 5-minute grace period. Because the job always processes "watermark to now" rather than "the last hour", missed runs self-heal: the next run backfills the whole gap. The catch-up horizon equals raw retention (72 hours); gaps older than that are permanently lost, which is acceptable (losing events is tolerable, corrupting rollups is not).
-9. Housekeeping in the same run: delete `event_raw` and `custom_event_raw` rows older than 72 hours whose day is finalized, and delete `daily_salt` rows for days before the current UTC day (salt destruction - see data model).
+8. The watermark advances past an hour only once the hour has been over for a 5-minute grace period. Because the job always processes "watermark to now" rather than "the last hour", missed runs self-heal: the next run backfills the whole gap. Raw rows are pruned only once their UTC day is finalized, so a gap longer than retention is still backfilled, 78 buckets per run, instead of being pruned out from under the catch-up. Only the first run starts from a fixed horizon: it bootstraps the watermark one retention window (72 hours) back.
+9. Housekeeping in the same run: delete `event_raw` and `custom_event_raw` rows older than 72 hours whose day is finalized (the watermark is past the end of that UTC day). A day the watermark is still inside keeps all its raw rows, because a later run recomputes the whole day and a partial day would overwrite its daily rollups with a smaller count. and delete `daily_salt` rows for days before the current UTC day (salt destruction - see data model).
 
 ### Read path (dashboard)
 
@@ -337,8 +337,10 @@ site-scoped reads, matching every other rollup table. Like custom events, comple
 occurrence counts only; a repeatable goal can be completed more than once by the same
 visitor, and there is no distinct-visitor figure (an `event` goal has no visitor hash at all).
 Recompute needs no new raw table and adds no prune step: goals derive entirely from the two
-existing raw streams, which are already pruned at 72 hours. The catch-up horizon is therefore
-the same 72 hours, so a goal registered now only counts completions still inside that window.
+existing raw streams, which are already pruned at 72 hours. A new goal is not backfilled: the
+job only recomputes the UTC days its pending hours touch, which in normal running is just the
+current day. A goal registered now therefore counts completions from the start of the current
+UTC day; earlier days keep no row for it even while their raw rows are still on hand.
 
 The dashboard's "Goals" panel reads `GET /api/stats/goals`, which lists each goal with its
 summed completions over the range and a conversion rate. The conversion rate is

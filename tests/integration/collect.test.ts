@@ -135,6 +135,33 @@ describe("POST /api/collect", () => {
     expect(await eventCount()).toBe(0);
   });
 
+  it("stops reading a chunked body once it passes the cap", async () => {
+    await seedSite();
+    let pulls = 0;
+    const chunk = new TextEncoder().encode("a".repeat(512));
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls += 1;
+        if (pulls > 10_000) controller.close();
+        else controller.enqueue(chunk);
+      },
+    });
+    // No Content-Length, as with Transfer-Encoding: chunked.
+    const init = {
+      method: "POST",
+      headers: { origin: `https://${DOMAIN}`, "user-agent": DESKTOP_UA },
+      body,
+      duplex: "half" as const,
+    };
+    const res = await POST(
+      new NextRequest("http://localhost:3000/api/collect", init),
+    );
+
+    expect(res.status).toBe(413);
+    expect(pulls).toBeLessThan(20);
+    expect(await eventCount()).toBe(0);
+  });
+
   it("drops DNT and GPC requests with 202 and stores nothing", async () => {
     await seedSite();
     const dnt = await POST(collectRequest({ sid: SID, p: "/" }, { dnt: "1" }));

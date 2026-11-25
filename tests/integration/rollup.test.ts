@@ -185,6 +185,36 @@ describe("rollup job", () => {
     );
   });
 
+  it("keeps raw on an unfinished day past retention when far behind", async () => {
+    const s = await seedSite();
+    // 180 hours behind: the first run's 78 buckets stop at 2026-05-12T05:00,
+    // short of the retention cutoff (2026-05-12T12:30) on the same UTC day.
+    await getSql()`INSERT INTO rollup_watermark (id, finalized_through) VALUES (1, ${new Date(
+      "2026-05-09T00:00:00Z",
+    ).toISOString()}::timestamptz)`;
+    await insertRaw(s, "2026-05-12T03:00:00Z", "a".repeat(32)); // processed in run 1
+    await insertRaw(s, "2026-05-12T08:00:00Z", "b".repeat(32)); // processed in run 2
+    await insertRaw(s, "2026-05-12T20:00:00Z", "c".repeat(32)); // inside retention
+
+    const first = summary(await runRollup(NOW));
+    expect(first.hoursProcessed).toBe(78);
+    expect(first.finalizedThrough).toBe("2026-05-12T06:00:00.000Z");
+    expect(first.rawPruned).toBe(0);
+
+    const second = summary(await runRollup(NOW));
+    expect(second.rawPruned).toBe(2);
+
+    const daily = await getSql()`
+      SELECT pageviews, visitors FROM rollup_daily WHERE day = '2026-05-12'`;
+    expect(Number(daily[0]!.pageviews)).toBe(3);
+    expect(Number(daily[0]!.visitors)).toBe(3);
+
+    const hour = await getSql()`
+      SELECT pageviews FROM rollup_hourly
+      WHERE bucket = ${"2026-05-12T08:00:00Z"}::timestamptz`;
+    expect(hour.map((r) => Number(r.pageviews))).toEqual([1]);
+  });
+
   it("duplicate (replayed) raw inflates pageviews but not distinct visitors", async () => {
     const s = await seedSite();
     const A = "a".repeat(32);

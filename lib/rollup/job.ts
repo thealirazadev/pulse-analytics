@@ -148,9 +148,18 @@ async function execute(now: Date): Promise<RollupSummary> {
     WHERE id = 1
   `;
 
-  // Housekeeping: prune raw past retention (anything that old is finalized) and
-  // destroy salts for days before today.
-  const cutoff = new Date(nowMs - RAW_RETENTION_HOURS * HOUR_MS);
+  // Housekeeping: prune raw past retention and destroy salts for days before
+  // today. Raw on a UTC day the watermark has not finished is kept even past
+  // retention: a later run recomputes that whole day from raw, and pruning part
+  // of it would overwrite its daily rollups with a partial count. This only
+  // bites when the job has fallen far behind; normally the retention cutoff is
+  // the earlier of the two.
+  const finalizedDayStartMs = Date.parse(
+    `${utcDayString(newFinalized)}T00:00:00Z`,
+  );
+  const cutoff = new Date(
+    Math.min(nowMs - RAW_RETENTION_HOURS * HOUR_MS, finalizedDayStartMs),
+  );
   // rawPruned is the total rows removed from both raw tables (pageviews and
   // custom events), which share the same 72-hour retention window.
   const rawPruned =
