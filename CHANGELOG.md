@@ -51,6 +51,9 @@ version number and date will be added when the first release is cut.
   After a gap longer than about six days, a catch-up run used to delete the
   rest of the day it stopped in, and the next run overwrote that day's daily
   rollups with a partial count and lost its remaining hours.
+- `POST /api/collect` stops reading a body once it passes 1024 bytes. A chunked
+  request has no Content-Length, and the whole body used to be buffered before
+  the size check ran.
 
 ### Documentation
 

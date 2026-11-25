@@ -34,6 +34,33 @@ async function markVerified(
     .where(and(eq(site.id, siteId), isNull(site.verifiedAt)));
 }
 
+/**
+ * Read the body as text, giving up as soon as it passes `limit` bytes; null
+ * means too large. A chunked request carries no Content-Length, so without this
+ * cap `req.text()` would buffer a body of any size before the check ran.
+ */
+async function readBodyCapped(
+  req: NextRequest,
+  limit: number,
+): Promise<string | null> {
+  if (!req.body) return "";
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > limit) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  // TextDecoder matches req.text(): UTF-8, replacement characters, BOM dropped.
+  return new TextDecoder().decode(Buffer.concat(chunks));
+}
+
 /** Best-effort client IP from proxy headers; only used in-memory, never stored. */
 function extractClientIp(req: NextRequest): string {
   const forwarded = req.headers.get("x-forwarded-for");
@@ -53,8 +80,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       logger.info("ingest_rejected", { code: "payload_too_large", status: 413 });
       return apiError("payload_too_large");
     }
-    const rawBody = await req.text();
-    if (Buffer.byteLength(rawBody, "utf8") > MAX_BEACON_BYTES) {
+    const rawBody = await readBodyCapped(req, MAX_BEACON_BYTES);
+    if (rawBody === null) {
       logger.info("ingest_rejected", { code: "payload_too_large", status: 413 });
       return apiError("payload_too_large");
     }
