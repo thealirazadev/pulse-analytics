@@ -80,6 +80,14 @@ describe("parseDimension and parseLimit", () => {
     expect(parseLimit("51")).toBeNull();
     expect(parseLimit("abc")).toBeNull();
   });
+
+  it("accepts the limit bounds and rejects signed or decimal input", () => {
+    expect(parseLimit("1")).toBe(1);
+    expect(parseLimit("50")).toBe(50);
+    expect(parseLimit("-5")).toBeNull();
+    expect(parseLimit("2.5")).toBeNull();
+    expect(parseLimit("")).toBeNull();
+  });
 });
 
 describe("buildBuckets and zeroFill", () => {
