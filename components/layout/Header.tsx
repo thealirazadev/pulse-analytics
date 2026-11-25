@@ -3,8 +3,8 @@ import { LogoutButton } from "./LogoutButton";
 import { ThemeToggle } from "./ThemeToggle";
 
 /**
- * App header: brand link, primary nav, and the logout action. The theme toggle
- * is added in the theming phase.
+ * App header: brand link, primary nav, the theme toggle, and the logout
+ * action.
  */
 export function Header() {
   return (
